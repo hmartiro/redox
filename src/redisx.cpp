@@ -54,12 +54,45 @@ void Redis::start() {
   event_base_dispatch(base);
 }
 
+
+// ----------------------------
+
 void Redis::command(const char* cmd) {
   int status = redisAsyncCommand(c, NULL, NULL, cmd);
   if (status != REDIS_OK) {
     cerr << "[ERROR] Async command \"" << cmd << "\": " << c->errstr << endl;
     return;
   }
+}
+
+// ----------------------------
+
+void e_callback(evutil_socket_t fd, short what, void *arg) {
+
+  const char* cmd = "LPUSH count 1";
+
+  redisAsyncContext* c = (redisAsyncContext*)arg;
+
+  int status = redisAsyncCommand(c, NULL, NULL, cmd);
+  if (status != REDIS_OK) {
+    cerr << "[ERROR] Async command \"" << cmd << "\": " << c->errstr << endl;
+    return;
+  }
+}
+
+struct event* Redis::command_loop(const char* cmd,  long interval_s, long interval_us) {
+
+  struct event* e;
+  if(interval_s == 0 && interval_us == 0) {
+    e = event_new(base, -1, EV_PERSIST, e_callback, c);
+    event_add(e, NULL);
+  } else {
+    struct timeval e_time = {interval_s, interval_us};
+    e = event_new(base, -1, EV_TIMEOUT | EV_PERSIST, e_callback, c);
+    event_add(e, &e_time);
+  }
+
+  return e;
 }
 
 // ----------------------------

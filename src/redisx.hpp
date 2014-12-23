@@ -29,6 +29,8 @@ public:
 
   void command(const char* command);
 
+  struct event* command_loop(const char* command, long interval_s, long interval_us);
+
   void get(const char* key, std::function<void(const std::string&, const char*)> callback);
 
   void set(const char* key, const char* value);
@@ -104,5 +106,6 @@ void Redis::command(const std::string& cmd, const std::function<void(const std::
     return;
   }
 }
+
 
 } // End namespace redis
