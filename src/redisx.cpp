@@ -20,19 +20,19 @@ mutex connected_lock;
 
 void connected(const redisAsyncContext *c, int status) {
   if (status != REDIS_OK) {
-    printf("Error: %s\n", c->errstr);
+    cerr << "[ERROR] Connecting to Redis: " << c->errstr << endl;
     return;
   }
-  printf("Connected...\n");
+  cout << "Connected to Redis." << endl;
   connected_lock.unlock();
 }
 
 void disconnected(const redisAsyncContext *c, int status) {
   if (status != REDIS_OK) {
-    printf("Error: %s\n", c->errstr);
+    cerr << "[ERROR] Disconnecting from Redis: " << c->errstr << endl;
     return;
   }
-  printf("Disconnected...\n");
+  cout << "Disconnected from Redis." << endl;
   connected_lock.lock();
 }
 
@@ -64,7 +64,7 @@ Redis::~Redis() {
   redisAsyncDisconnect(c);
 }
 
-void Redis::start() {
+void Redis::run() {
 
   event_loop_thread = thread([this] {
     ev_run(EV_DEFAULT_ EVRUN_NOWAIT);
@@ -76,6 +76,17 @@ void Redis::start() {
     }
   });
   event_loop_thread.detach();
+}
+
+void Redis::run_blocking() {
+
+  ev_run(EV_DEFAULT_ EVRUN_NOWAIT);
+  connected_lock.lock();
+
+  while (true) {
+    process_queued_commands();
+    ev_run(EV_DEFAULT_ EVRUN_NOWAIT);
+  }
 }
 
 template<class ReplyT>

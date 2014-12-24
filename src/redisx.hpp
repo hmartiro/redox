@@ -13,6 +13,7 @@
 #include <queue>
 #include <set>
 #include <unordered_map>
+#include <thread>
 
 namespace redisx {
 
@@ -42,7 +43,8 @@ public:
   Redis(const std::string& host, const int port);
   ~Redis();
 
-  void start();
+  void run();
+  void run_blocking();
 
   template<class ReplyT>
   void command(
