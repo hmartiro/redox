@@ -9,8 +9,31 @@
 #include <iostream>
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
+#include <mutex>
+#include <queue>
+#include <set>
+#include <unordered_map>
 
 namespace redisx {
+
+class CommandAsyncGeneric {
+public:
+  redisCallbackFn* fn;
+  void* privdata;
+  const char* cmd;
+  CommandAsyncGeneric(redisCallbackFn* fn, void* privdata, const char* cmd)
+      : fn(fn), privdata(privdata), cmd(cmd) {}
+};
+
+template<class ReplyT>
+class CommandAsync {
+public:
+  CommandAsync(const std::string& cmd, const std::function<void(const std::string&, ReplyT)>& callback)
+      : cmd(cmd), callback(callback) {}
+  const std::string cmd;
+  const std::function<void(const std::string&, ReplyT)> callback;
+  void invoke(ReplyT reply) const {if(callback != NULL) callback(cmd, reply); }
+};
 
 class Redis {
 
@@ -29,7 +52,7 @@ public:
 
   void command(const char* command);
 
-  struct event* command_loop(const char* command, long interval_s, long interval_us);
+//  struct event* command_loop(const char* command, long interval_s, long interval_us);
 
   void get(const char* key, std::function<void(const std::string&, const char*)> callback);
 
@@ -54,17 +77,28 @@ private:
 
   struct event_base *base;
   redisAsyncContext *c;
+
+  std::mutex evlock;
+
+  std::thread event_loop_thread;
+
+  template<class ReplyT>
+  std::unordered_map<void*, CommandAsync<ReplyT>*>& get_command_map();
+
+  std::unordered_map<void*, CommandAsync<const redisReply*>*> commands_redis_reply;
+  std::unordered_map<void*, CommandAsync<const std::string&>*> commands_string_r;
+  std::unordered_map<void*, CommandAsync<const char*>*> commands_char_p;
+  std::unordered_map<void*, CommandAsync<int>*> commands_int;
+  std::unordered_map<void*, CommandAsync<long long int>*> commands_long_long_int;
+
+  std::queue<void*> command_queue;
+  void process_queued_commands();
+
+  template<class ReplyT>
+  bool process_queued_command(void* cmd_ptr);
 };
 
-template<class ReplyT>
-class CommandAsync {
-public:
-  CommandAsync(const std::string& cmd, const std::function<void(const std::string&, ReplyT)>& callback)
-      : cmd(cmd), callback(callback) {}
-  const std::string cmd;
-  const std::function<void(const std::string&, ReplyT)> callback;
-  void invoke(ReplyT reply) const {if(callback != NULL) callback(cmd, reply); }
-};
+// ---------------------------
 
 template<class ReplyT>
 void invoke_callback(
@@ -97,15 +131,10 @@ void command_callback(redisAsyncContext *c, void *r, void *privdata) {
 template<class ReplyT>
 void Redis::command(const std::string& cmd, const std::function<void(const std::string&, ReplyT)>& callback) {
 
-  auto *cmd_obj = new CommandAsync<ReplyT>(cmd, callback);
-
-  int status = redisAsyncCommand(c, command_callback<ReplyT>, (void*)cmd_obj, cmd.c_str());
-  if (status != REDIS_OK) {
-    std::cerr << "[ERROR] Async command \"" << cmd << "\": " << c->errstr << std::endl;
-    delete cmd_obj;
-    return;
-  }
+  std::lock_guard<std::mutex> lg(evlock);
+  auto* cmd_obj = new CommandAsync<ReplyT>(cmd, callback);
+  get_command_map<ReplyT>()[(void*)cmd_obj] = cmd_obj;
+  command_queue.push((void*)cmd_obj);
 }
-
 
 } // End namespace redis
