@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(redisx)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -g  -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -O3")#-g  -fno-omit-frame-pointer")
 # set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # ---------------------------------------------------------
@@ -29,3 +29,7 @@ set(LIB_ALL ${LIB_REDIS})
 
 add_executable(basic examples/basic.cpp ${SRC_ALL})
 target_link_libraries(basic ${LIB_REDIS})
+
+
+add_executable(lpush_benchmark examples/lpush_benchmark.cpp ${SRC_ALL})
+target_link_libraries(lpush_benchmark ${LIB_REDIS})
