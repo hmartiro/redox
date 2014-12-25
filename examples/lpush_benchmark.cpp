@@ -3,7 +3,6 @@
 */
 
 #include <iostream>
-#include <mutex>
 #include "../src/redisx.hpp"
 
 using namespace std;
@@ -18,6 +17,7 @@ int main(int argc, char* argv[]) {
   redisx::Redis rdx = {"localhost", 6379};
   rdx.run();
 
+  // TODO wait for this somehow
   rdx.command("DEL test");
 
   unsigned long t0 = time_ms();
@@ -25,11 +25,9 @@ int main(int argc, char* argv[]) {
 
   int len = 1000000;
   int count = 0;
-  mutex task_lock;
 
-  task_lock.lock();
   for(int i = 1; i <= len; i++) {
-    rdx.command<int>("lpush test 1", [&t0, &t1, &count, len, &task_lock](const string& cmd, int reply) {
+    rdx.command<int>("lpush test 1", [&t0, &t1, &count, len, &rdx](const string& cmd, int reply) {
 
       count++;
       if(count == len) {
@@ -40,14 +38,12 @@ int main(int argc, char* argv[]) {
         cout << "Time to receive all: " << t2 - t1 << "ms" <<  endl;
         cout << "Total time: " << t2 - t0 << "ms" <<  endl;
 
-        task_lock.unlock();
+        rdx.stop();
       }
     });
   }
   t1 = time_ms();
 
-  task_lock.lock();
-  rdx.stop();
-
+  rdx.block_until_stopped();
   return 0;
 };

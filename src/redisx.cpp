@@ -73,6 +73,10 @@ void Redis::run_blocking() {
 
   // Handle exit events
   ev_run(EV_DEFAULT_ EVRUN_NOWAIT);
+
+  // Let go for block_until_stopped method
+  unique_lock<mutex> ul(exit_waiter_lock);
+  exit_waiter.notify_one();
 }
 
 void Redis::run() {
@@ -83,6 +87,11 @@ void Redis::run() {
 
 void Redis::stop() {
   to_exit = true;
+}
+
+void Redis::block_until_stopped() {
+  unique_lock<mutex> ul(exit_waiter_lock);
+  exit_waiter.wait(ul, [this]() { return to_exit.load(); });
 }
 
 template<class ReplyT>

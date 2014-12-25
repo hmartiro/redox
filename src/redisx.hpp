@@ -9,6 +9,7 @@
 
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 
 #include <string>
@@ -17,6 +18,7 @@
 
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
+#include <condition_variable>
 
 namespace redisx {
 
@@ -47,6 +49,7 @@ public:
   void run();
   void run_blocking();
   void stop();
+  void block_until_stopped();
 
   template<class ReplyT>
   void command(
@@ -84,6 +87,8 @@ private:
   redisAsyncContext *c;
 
   std::atomic_bool to_exit;
+  std::mutex exit_waiter_lock;
+  std::condition_variable exit_waiter;
 
   std::thread event_loop_thread;
 
