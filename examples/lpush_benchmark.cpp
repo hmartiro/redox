@@ -45,5 +45,8 @@ int main(int argc, char* argv[]) {
   t1 = time_ms();
 
   rdx.block_until_stopped();
+
+  cout << "Commands processed: " << rdx.num_commands_processed() << endl;
+
   return 0;
 };

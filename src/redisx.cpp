@@ -36,7 +36,7 @@ void disconnected(const redisAsyncContext *c, int status) {
 }
 
 Redis::Redis(const string& host, const int port)
-    : host(host), port(port), io_ops(0), to_exit(false) {
+    : host(host), port(port), cmd_count(0), to_exit(false) {
 
   lock_guard<mutex> lg(queue_guard);
   connected_lock.lock();
@@ -134,7 +134,13 @@ void Redis::process_queued_commands() {
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
 
     command_queue.pop();
+    cmd_count++;
   }
+}
+
+long Redis::num_commands_processed() {
+  lock_guard<mutex> lg(queue_guard);
+  return cmd_count;
 }
 
 // ----------------------------

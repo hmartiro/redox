@@ -61,6 +61,8 @@ public:
 
   void command(const char* command);
 
+  long num_commands_processed();
+
 //  struct event* command_loop(const char* command, long interval_s, long interval_us);
 
 //  void get(const char* key, std::function<void(const std::string&, const char*)> callback);
@@ -81,8 +83,8 @@ private:
   std::string host;
   int port;
 
-  // Number of IOs performed
-  long io_ops;
+  // Number of commands processed
+  long cmd_count;
 
   redisAsyncContext *c;
 
@@ -137,7 +139,7 @@ void command_callback(redisAsyncContext *c, void *r, void *privdata) {
   }
 
   if(reply->type == REDIS_REPLY_NIL) {
-    std::cerr << "[ERROR] " << cmd_obj->cmd << ": Nil reply." << std::endl;
+    std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
     delete cmd_obj;
     return; // cmd_obj->invoke(NULL);
   }
