@@ -20,37 +20,9 @@
 #include <hiredis/async.h>
 #include <hiredis/adapters/libev.h>
 
+#include "command.hpp"
+
 namespace redisx {
-
-template<class ReplyT>
-class CommandAsync {
-public:
-  CommandAsync(
-      redisAsyncContext* c,
-      const std::string& cmd,
-      const std::function<void(const std::string&, ReplyT)>& callback,
-      double repeat, double after
-  ) : c(c), cmd(cmd), callback(callback), repeat(repeat), after(after), done(false) {}
-
-  redisAsyncContext* c;
-  const std::string cmd;
-  const std::function<void(const std::string&, ReplyT)> callback;
-  double repeat;
-  double after;
-  bool done;
-  ev_timer* timer;
-
-  void invoke(ReplyT reply) {
-    if(callback != NULL) callback(cmd, reply);
-    if((repeat == 0)) done = true;
-  }
-  void free_if_done() {
-    if(done) {
-      std::cout << "Deleting CommandAsync: " << cmd << std::endl;
-      delete this;
-    };
-  }
-};
 
 class Redis {
 
@@ -65,7 +37,7 @@ public:
   void block_until_stopped();
 
   template<class ReplyT>
-  void command(
+  Command<ReplyT>* command(
       const std::string& cmd,
       const std::function<void(const std::string&, ReplyT)>& callback = NULL,
       double repeat = 0.0,
@@ -73,6 +45,9 @@ public:
   );
 
   void command(const char* command);
+
+  template<class ReplyT>
+  bool cancel(Command<ReplyT>* cmd_obj);
 
   long num_commands_processed();
 
@@ -105,14 +80,14 @@ private:
 
   std::thread event_loop_thread;
 
-  std::unordered_map<void*, CommandAsync<const redisReply*>*> commands_redis_reply;
-  std::unordered_map<void*, CommandAsync<const std::string&>*> commands_string_r;
-  std::unordered_map<void*, CommandAsync<const char*>*> commands_char_p;
-  std::unordered_map<void*, CommandAsync<int>*> commands_int;
-  std::unordered_map<void*, CommandAsync<long long int>*> commands_long_long_int;
+  std::unordered_map<void*, Command<const redisReply*>*> commands_redis_reply;
+  std::unordered_map<void*, Command<const std::string&>*> commands_string_r;
+  std::unordered_map<void*, Command<const char*>*> commands_char_p;
+  std::unordered_map<void*, Command<int>*> commands_int;
+  std::unordered_map<void*, Command<long long int>*> commands_long_long_int;
 
   template<class ReplyT>
-  std::unordered_map<void*, CommandAsync<ReplyT>*>& get_command_map();
+  std::unordered_map<void*, Command<ReplyT>*>& get_command_map();
 
   std::queue<void*> command_queue;
   std::mutex queue_guard;
@@ -126,7 +101,7 @@ private:
 
 template<class ReplyT>
 void invoke_callback(
-    CommandAsync<ReplyT>* cmd_obj,
+    Command<ReplyT>* cmd_obj,
     redisReply* reply
 );
 
@@ -134,7 +109,7 @@ template<class ReplyT>
 void command_callback(redisAsyncContext *c, void *r, void *privdata) {
 
   redisReply *reply = (redisReply *) r;
-  auto *cmd_obj = (CommandAsync<ReplyT> *) privdata;
+  auto *cmd_obj = (Command<ReplyT> *) privdata;
 
   if (reply->type == REDIS_REPLY_ERROR) {
     std::cerr << "[ERROR] " << cmd_obj->cmd << ": " << reply->str << std::endl;
@@ -153,7 +128,7 @@ void command_callback(redisAsyncContext *c, void *r, void *privdata) {
 }
 
 template<class ReplyT>
-void Redis::command(
+Command<ReplyT>* Redis::command(
     const std::string& cmd,
     const std::function<void(const std::string&, ReplyT)>& callback,
     double repeat,
@@ -161,9 +136,21 @@ void Redis::command(
 ) {
 
   std::lock_guard<std::mutex> lg(queue_guard);
-  auto* cmd_obj = new CommandAsync<ReplyT>(c, cmd, callback, repeat, after);
+  auto* cmd_obj = new Command<ReplyT>(c, cmd, callback, repeat, after);
   get_command_map<ReplyT>()[(void*)cmd_obj] = cmd_obj;
   command_queue.push((void*)cmd_obj);
+  return cmd_obj;
+}
+
+template<class ReplyT>
+bool Redis::cancel(Command<ReplyT>* cmd_obj) {
+
+  // TODO erase from global timer_callbacks
+
+  if((cmd_obj->repeat != 0) || (cmd_obj->after != 0))
+    ev_timer_stop(EV_DEFAULT_ cmd_obj->get_timer());
+
+  return true;
 }
 
 } // End namespace redis
