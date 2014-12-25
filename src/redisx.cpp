@@ -3,19 +3,19 @@
 */
 
 #include <signal.h>
-#include <iostream>
-#include <thread>
-#include <hiredis/adapters/libev.h>
-#include <ev.h>
-#include <event2/thread.h>
-#include <vector>
+//#include <event2/thread.h>
 #include "redisx.hpp"
 
 using namespace std;
 
 namespace redisx {
 
+// Global mutex to manage waiting for connected state
 mutex connected_lock;
+
+// Map of ev_timer events to pointers to CommandAsync objects
+// Used to get the object back from the timer watcher callback
+unordered_map<ev_timer*, void*> timer_callbacks;
 
 void connected(const redisAsyncContext *c, int status) {
   if (status != REDIS_OK) {
@@ -94,14 +94,24 @@ void Redis::block_until_stopped() {
   exit_waiter.wait(ul, [this]() { return to_exit.load(); });
 }
 
+/**
+* Submit an asynchronous command to the Redis server. Return
+* true if succeeded, false otherwise.
+*/
 template<class ReplyT>
-bool Redis::submit_to_server(const CommandAsync<ReplyT>* cmd_obj) {
-  if (redisAsyncCommand(c, command_callback<ReplyT>, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
-    cerr << "[ERROR] Async command \"" << cmd_obj->cmd << "\": " << c->errstr << endl;
-    delete cmd_obj;
+bool submit_to_server(CommandAsync<ReplyT>* cmd_obj) {
+  if (redisAsyncCommand(cmd_obj->c, command_callback<ReplyT>, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
+    cerr << "[ERROR] Async command \"" << cmd_obj->cmd << "\": " << cmd_obj->c->errstr << endl;
+    cmd_obj->free_if_done();
     return false;
   }
   return true;
+}
+
+template<class ReplyT>
+void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents) {
+  auto cmd_obj = (CommandAsync<ReplyT>*)timer_callbacks.at(timer);
+  submit_to_server<ReplyT>(cmd_obj);
 }
 
 template<class ReplyT>
@@ -114,7 +124,14 @@ bool Redis::process_queued_command(void* cmd_ptr) {
   CommandAsync<ReplyT>* cmd_obj = it->second;
   command_map.erase(cmd_ptr);
 
-  submit_to_server<ReplyT>(cmd_obj);
+  if((cmd_obj->repeat == 0) && (cmd_obj->after == 0)) {
+    submit_to_server<ReplyT>(cmd_obj);
+  } else {
+    cmd_obj->timer = new ev_timer();
+    timer_callbacks[cmd_obj->timer] = (void*)cmd_obj;
+    ev_timer_init(cmd_obj->timer, submit_command_callback<ReplyT>, cmd_obj->after, cmd_obj->repeat);
+    ev_timer_start(EV_DEFAULT_ cmd_obj->timer);
+  }
 
   return true;
 }
@@ -147,13 +164,13 @@ long Redis::num_commands_processed() {
 
 template<> unordered_map<void*, CommandAsync<const redisReply*>*>& Redis::get_command_map() { return commands_redis_reply; }
 template<>
-void invoke_callback(const CommandAsync<const redisReply*>* cmd_obj, redisReply* reply) {
+void invoke_callback(CommandAsync<const redisReply*>* cmd_obj, redisReply* reply) {
   cmd_obj->invoke(reply);
 }
 
 template<> unordered_map<void*, CommandAsync<const string&>*>& Redis::get_command_map() { return commands_string_r; }
 template<>
-void invoke_callback(const CommandAsync<const string&>* cmd_obj, redisReply* reply) {
+void invoke_callback(CommandAsync<const string&>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
     cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-string reply." << endl;
     return;
@@ -164,7 +181,7 @@ void invoke_callback(const CommandAsync<const string&>* cmd_obj, redisReply* rep
 
 template<> unordered_map<void*, CommandAsync<const char*>*>& Redis::get_command_map() { return commands_char_p; }
 template<>
-void invoke_callback(const CommandAsync<const char*>* cmd_obj, redisReply* reply) {
+void invoke_callback(CommandAsync<const char*>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
     cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-string reply." << endl;
     return;
@@ -174,7 +191,7 @@ void invoke_callback(const CommandAsync<const char*>* cmd_obj, redisReply* reply
 
 template<> unordered_map<void*, CommandAsync<int>*>& Redis::get_command_map() { return commands_int; }
 template<>
-void invoke_callback(const CommandAsync<int>* cmd_obj, redisReply* reply) {
+void invoke_callback(CommandAsync<int>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_INTEGER) {
     cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-integer reply." << endl;
     return;
@@ -184,7 +201,7 @@ void invoke_callback(const CommandAsync<int>* cmd_obj, redisReply* reply) {
 
 template<> unordered_map<void*, CommandAsync<long long int>*>& Redis::get_command_map() { return commands_long_long_int; }
 template<>
-void invoke_callback(const CommandAsync<long long int>* cmd_obj, redisReply* reply) {
+void invoke_callback(CommandAsync<long long int>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_INTEGER) {
     cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-integer reply." << endl;
     return;

@@ -18,7 +18,7 @@
 
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
-#include <condition_variable>
+#include <hiredis/adapters/libev.h>
 
 namespace redisx {
 
@@ -26,17 +26,30 @@ template<class ReplyT>
 class CommandAsync {
 public:
   CommandAsync(
+      redisAsyncContext* c,
       const std::string& cmd,
       const std::function<void(const std::string&, ReplyT)>& callback,
       double repeat, double after
-  ) : cmd(cmd), callback(callback), repeat(repeat), after(after) {}
+  ) : c(c), cmd(cmd), callback(callback), repeat(repeat), after(after), done(false) {}
 
+  redisAsyncContext* c;
   const std::string cmd;
   const std::function<void(const std::string&, ReplyT)> callback;
   double repeat;
   double after;
+  bool done;
+  ev_timer* timer;
 
-  void invoke(ReplyT reply) const {if(callback != NULL) callback(cmd, reply); }
+  void invoke(ReplyT reply) {
+    if(callback != NULL) callback(cmd, reply);
+    if((repeat == 0)) done = true;
+  }
+  void free_if_done() {
+    if(done) {
+      std::cout << "Deleting CommandAsync: " << cmd << std::endl;
+      delete this;
+    };
+  }
 };
 
 class Redis {
@@ -62,8 +75,6 @@ public:
   void command(const char* command);
 
   long num_commands_processed();
-
-//  struct event* command_loop(const char* command, long interval_s, long interval_us);
 
 //  void get(const char* key, std::function<void(const std::string&, const char*)> callback);
 //
@@ -109,20 +120,13 @@ private:
 
   template<class ReplyT>
   bool process_queued_command(void* cmd_ptr);
-
-  /**
-  * Submit an asynchronous command to the Redis server. Return
-  * true if succeeded, false otherwise.
-  */
-  template<class ReplyT>
-  bool submit_to_server(const CommandAsync<ReplyT>* cmd_obj);
 };
 
 // ---------------------------
 
 template<class ReplyT>
 void invoke_callback(
-    const CommandAsync<ReplyT>* cmd_obj,
+    CommandAsync<ReplyT>* cmd_obj,
     redisReply* reply
 );
 
@@ -134,18 +138,18 @@ void command_callback(redisAsyncContext *c, void *r, void *privdata) {
 
   if (reply->type == REDIS_REPLY_ERROR) {
     std::cerr << "[ERROR] " << cmd_obj->cmd << ": " << reply->str << std::endl;
-    delete cmd_obj;
+    cmd_obj->free_if_done();
     return;
   }
 
   if(reply->type == REDIS_REPLY_NIL) {
     std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
-    delete cmd_obj;
+    cmd_obj->free_if_done();
     return; // cmd_obj->invoke(NULL);
   }
 
   invoke_callback<ReplyT>(cmd_obj, reply);
-  delete cmd_obj;
+  cmd_obj->free_if_done();
 }
 
 template<class ReplyT>
@@ -157,10 +161,9 @@ void Redis::command(
 ) {
 
   std::lock_guard<std::mutex> lg(queue_guard);
-  auto* cmd_obj = new CommandAsync<ReplyT>(cmd, callback, repeat, after);
+  auto* cmd_obj = new CommandAsync<ReplyT>(c, cmd, callback, repeat, after);
   get_command_map<ReplyT>()[(void*)cmd_obj] = cmd_obj;
   command_queue.push((void*)cmd_obj);
 }
-
 
 } // End namespace redis
