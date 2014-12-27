@@ -6,6 +6,7 @@
 #include "../src/redisx.hpp"
 
 using namespace std;
+using namespace redisx;
 
 double time_s() {
   unsigned long ms = chrono::system_clock::now().time_since_epoch() / chrono::microseconds(1);
@@ -14,14 +15,22 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  redisx::Redis rdx = {"localhost", 6379};
+  Redis rdx = {"localhost", 6379};
   rdx.run();
 
-  rdx.command_blocking("DEL simple_loop:count");
-  rdx.command_blocking("SET simple_loop:count 0");
+  Command<int>* del_cmd = rdx.command_blocking<int>("DEL simple_loop:count");
+  cout << "deleted key, reply: " << del_cmd->reply() << endl;
+  del_cmd->free();
 
-  cout << "At the start, simple_loop:count = "
-       << rdx.command_blocking<string>("GET simple_loop:count") << endl;
+  Command<char*>* set_cmd = rdx.command_blocking<char*>("SET simple_loop:count 0");
+  cout << "set key, reply: " << set_cmd->reply() << endl;
+  set_cmd->free();
+
+  Command<char*>* count_cmd = rdx.command_blocking<char*>("GET simple_loop:count");
+  if(count_cmd->status() == REDISX_OK) {
+    cout << "At the start, simple_loop:count = " << count_cmd->reply() << endl;
+  }
+  count_cmd->free();
 
   string cmd_str = "INCR simple_loop:count";
 
@@ -33,7 +42,7 @@ int main(int argc, char* argv[]) {
       << "s for " << t << "s..." << endl;
 
   atomic_int count(0);
-  redisx::Command<int>* c = rdx.command<int>(
+  Command<int>* c = rdx.command<int>(
       cmd_str,
       [&count](const string &cmd, const int& value) { count++; },
       NULL,
@@ -46,7 +55,7 @@ int main(int argc, char* argv[]) {
   rdx.cancel(c);
 
   cout << "At the end, simple_loop:count = "
-       << rdx.command_blocking<string>("GET simple_loop:count") << endl;
+       << rdx.command_blocking<string>("GET simple_loop:count")->reply() << endl;
 
   rdx.stop();
 

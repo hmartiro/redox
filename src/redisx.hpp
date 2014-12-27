@@ -22,14 +22,6 @@
 
 #include "command.hpp"
 
-static const int REDISX_UNINIT = -1;
-static const int REDISX_OK = 0;
-static const int REDISX_SEND_ERROR = 1;
-static const int REDISX_WRONG_TYPE = 2;
-static const int REDISX_NIL_REPLY = 3;
-static const int REDISX_ERROR_REPLY = 4;
-static const int REDISX_TIMEOUT = 5;
-
 namespace redisx {
 
 class Redis {
@@ -46,11 +38,12 @@ public:
 
   template<class ReplyT>
   Command<ReplyT>* command(
-      const std::string& cmd,
-      const std::function<void(const std::string&, const ReplyT&)>& callback = NULL,
-      const std::function<void(const std::string&, int status)>& error_callback = NULL,
-      double repeat = 0.0,
-      double after = 0.0
+    const std::string& cmd,
+    const std::function<void(const std::string&, const ReplyT&)>& callback = NULL,
+    const std::function<void(const std::string&, int status)>& error_callback = NULL,
+    double repeat = 0.0,
+    double after = 0.0,
+    bool free_memory = true
   );
 
   template<class ReplyT>
@@ -59,19 +52,11 @@ public:
   void command(const std::string& command);
 
   template<class ReplyT>
-  ReplyT command_blocking(const std::string& cmd);
+  Command<ReplyT>* command_blocking(const std::string& cmd);
 
   void command_blocking(const std::string& command);
 
   long num_commands_processed();
-
-//  void get(const char* key, std::function<void(const std::string&, const char*)> callback);
-//
-//  void set(const char* key, const char* value);
-//  void set(const char* key, const char* value, std::function<void(const std::string&, const char*)> callback);
-//
-//  void del(const char* key);
-//  void del(const char* key, std::function<void(const std::string&, long long int)> callback);
 
 //  void publish(std::string channel, std::string msg);
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
@@ -113,9 +98,6 @@ private:
 
   template<class ReplyT>
   bool process_queued_command(void* cmd_ptr);
-
-  template<class ReplyT>
-  ReplyT copy_reply(const ReplyT& reply);
 };
 
 // ---------------------------
@@ -129,34 +111,36 @@ void invoke_callback(
 template<class ReplyT>
 void command_callback(redisAsyncContext *c, void *r, void *privdata) {
 
-  redisReply *reply = (redisReply *) r;
   auto *cmd_obj = (Command<ReplyT> *) privdata;
+  cmd_obj->reply_obj = (redisReply *) r;
 
-  if (reply->type == REDIS_REPLY_ERROR) {
-    std::cerr << "[ERROR] " << cmd_obj->cmd << ": " << reply->str << std::endl;
+  if (cmd_obj->reply_obj->type == REDIS_REPLY_ERROR) {
+    std::cerr << "[ERROR redisx.hpp:121] " << cmd_obj->cmd << ": " << cmd_obj->reply_obj->str << std::endl;
     cmd_obj->invoke_error(REDISX_ERROR_REPLY);
-    return;
-  }
 
-  if(reply->type == REDIS_REPLY_NIL) {
+  } else if(cmd_obj->reply_obj->type == REDIS_REPLY_NIL) {
     std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
     cmd_obj->invoke_error(REDISX_NIL_REPLY);
-    return;
+
+  } else {
+    invoke_callback<ReplyT>(cmd_obj, cmd_obj->reply_obj);
   }
 
-  invoke_callback<ReplyT>(cmd_obj, reply);
+  // Free the reply object unless told not to
+  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
 }
 
 template<class ReplyT>
 Command<ReplyT>* Redis::command(
-    const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback,
-    const std::function<void(const std::string&, int status)>& error_callback,
-    double repeat,
-    double after
+  const std::string& cmd,
+  const std::function<void(const std::string&, const ReplyT&)>& callback,
+  const std::function<void(const std::string&, int status)>& error_callback,
+  double repeat,
+  double after,
+  bool free_memory
 ) {
   std::lock_guard<std::mutex> lg(queue_guard);
-  auto* cmd_obj = new Command<ReplyT>(c, cmd, callback, error_callback, repeat, after);
+  auto* cmd_obj = new Command<ReplyT>(c, cmd, callback, error_callback, repeat, after, free_memory);
   get_command_map<ReplyT>()[(void*)cmd_obj] = cmd_obj;
   command_queue.push((void*)cmd_obj);
   return cmd_obj;
@@ -183,43 +167,39 @@ bool Redis::cancel(Command<ReplyT>* cmd_obj) {
 }
 
 template<class ReplyT>
-ReplyT Redis::command_blocking(const std::string& cmd) {
-  std::mutex m;
-  std::condition_variable cv;
+Command<ReplyT>* Redis::command_blocking(const std::string& cmd) {
+
   ReplyT val;
   std::atomic_int status(REDISX_UNINIT);
 
-  // There is a memory issue here, because after the callback returns
-  // all memory is cleared.
-  // TODO right now just don't use char* or redisReply* for blocking
-  // Later, maybe specialize a function to copy the pointer types to
-  // the heap
+  std::condition_variable cv;
+  std::mutex m;
 
-  command<ReplyT>(cmd,
-    [&cv, &val, &status](const std::string& cmd_str, const ReplyT& reply) {
-      std::cout << "cmd: " << cmd_str << std::endl;
-      std::cout << "invoking success, reply: " << reply << std::endl;
+  std::unique_lock<std::mutex> lk(m);
+
+  Command<ReplyT>* cmd_obj = command<ReplyT>(cmd,
+    [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
+      std::unique_lock<std::mutex> lk(m);
       val = reply;
-      std::cout << "invoking success, reply copied: " << val << std::endl;
       status = REDISX_OK;
+      lk.unlock();
       cv.notify_one();
     },
-    [&cv, &status](const std::string& cmd_str, int error) {
+    [&status, &m, &cv](const std::string& cmd_str, int error) {
+      std::unique_lock<std::mutex> lk(m);
       status = error;
+      lk.unlock();
       cv.notify_one();
-    }
+    },
+    0, 0, false // No repeats, don't free memory
   );
 
-  std::unique_lock<std::mutex> ul(m);
-  cv.wait(ul, [&status] { return status != REDISX_UNINIT; });
+  cv.wait(lk, [&status] { return status != REDISX_UNINIT; });
 
-  std::cout << "invoking success, after wait: " << val << std::endl;
-  std::cout << "response: " << status << std::endl;
-  if(status == REDISX_OK) return val;
-  else if(status == REDISX_NIL_REPLY) return val;
-  else throw std::runtime_error(
-      "[ERROR] " + cmd + ": redisx error code " + std::to_string(status.load())
-    );
+  cmd_obj->reply_val = val;
+  cmd_obj->reply_status = status;
+
+  return cmd_obj;
 }
 
 } // End namespace redis
