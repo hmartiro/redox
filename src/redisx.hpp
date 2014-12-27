@@ -49,22 +49,17 @@ public:
   template<class ReplyT>
   bool cancel(Command<ReplyT>* cmd_obj);
 
-  void command(const std::string& command);
-
   template<class ReplyT>
   Command<ReplyT>* command_blocking(const std::string& cmd);
 
-  void command_blocking(const std::string& command);
+  void command(const std::string& command);
+  bool command_blocking(const std::string& command);
 
   long num_commands_processed();
 
 //  void publish(std::string channel, std::string msg);
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
 //  void unsubscribe(std::string channel);
-
-  // Map of ev_timer events to pointers to Command objects
-  // Used to get the object back from the timer watcher callback
-  static std::unordered_map<ev_timer*, void*> timer_callbacks;
 
 private:
 
@@ -154,13 +149,12 @@ bool Redis::cancel(Command<ReplyT>* cmd_obj) {
     return false;
   }
 
-  timer_callbacks.at(cmd_obj->timer) = NULL;
+  cmd_obj->timer.data = NULL;
 
   std::lock_guard<std::mutex> lg(cmd_obj->timer_guard);
   if((cmd_obj->repeat != 0) || (cmd_obj->after != 0))
-    ev_timer_stop(EV_DEFAULT_ cmd_obj->timer);
+    ev_timer_stop(EV_DEFAULT_ &cmd_obj->timer);
 
-  delete cmd_obj->timer;
   cmd_obj->completed = true;
 
   return true;
@@ -179,21 +173,22 @@ Command<ReplyT>* Redis::command_blocking(const std::string& cmd) {
 
   Command<ReplyT>* cmd_obj = command<ReplyT>(cmd,
     [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
-      std::unique_lock<std::mutex> lk(m);
+      std::unique_lock<std::mutex> ul(m);
       val = reply;
       status = REDISX_OK;
-      lk.unlock();
+      ul.unlock();
       cv.notify_one();
     },
     [&status, &m, &cv](const std::string& cmd_str, int error) {
-      std::unique_lock<std::mutex> lk(m);
+      std::unique_lock<std::mutex> ul(m);
       status = error;
-      lk.unlock();
+      ul.unlock();
       cv.notify_one();
     },
     0, 0, false // No repeats, don't free memory
   );
 
+  // Wait until a callback is invoked
   cv.wait(lk, [&status] { return status != REDISX_UNINIT; });
 
   cmd_obj->reply_val = val;

@@ -42,3 +42,6 @@ set(LIB_ALL ${LIB_REDIS})
 
 add_executable(simple_loop examples/simple_loop.cpp ${SRC_ALL})
 target_link_libraries(simple_loop ${LIB_REDIS})
+
+add_executable(simple_sync_loop examples/simple_sync_loop.cpp ${SRC_ALL})
+target_link_libraries(simple_sync_loop ${LIB_REDIS})

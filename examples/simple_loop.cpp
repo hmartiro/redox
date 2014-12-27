@@ -17,10 +17,12 @@ int main(int argc, char* argv[]) {
 
   Redis rdx = {"localhost", 6379};
   rdx.run();
-
-  Command<int>* del_cmd = rdx.command_blocking<int>("DEL simple_loop:count");
-  cout << "deleted key, reply: " << del_cmd->reply() << endl;
-  del_cmd->free();
+//
+//  Command<int>* del_cmd = rdx.command_blocking<int>("DEL simple_loop:count");
+//  cout << "deleted key, reply: " << del_cmd->reply() << endl;
+//  del_cmd->free();
+  if(rdx.command_blocking("DEL simple_loop:count")) cout << "Deleted simple_loop:count" << endl;
+  else cerr << "Failed to delete simple_loop:count" << endl;
 
   Command<char*>* set_cmd = rdx.command_blocking<char*>("SET simple_loop:count 0");
   cout << "set key, reply: " << set_cmd->reply() << endl;

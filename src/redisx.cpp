@@ -11,10 +11,8 @@ using namespace std;
 
 namespace redisx {
 
-// Default construct the static map
-std::unordered_map<ev_timer*, void*> Redis::timer_callbacks;
-
 // Global mutex to manage waiting for connected state
+// TODO get rid of this as the only global variable?
 mutex connected_lock;
 
 /**
@@ -119,12 +117,14 @@ bool submit_to_server(Command<ReplyT>* cmd_obj) {
 
 template<class ReplyT>
 void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents) {
-  auto cmd_obj = (Command<ReplyT>*)Redis::timer_callbacks.at(timer);
-  if(cmd_obj == NULL) {
+
+  // Check if canceled
+  if(timer->data == NULL) {
     cerr << "[WARNING] Skipping event, has been canceled." << endl;
-    Redis::timer_callbacks.erase(timer);
     return;
   }
+
+  auto cmd_obj = (Command<ReplyT>*)timer->data;
   submit_to_server<ReplyT>(cmd_obj);
 }
 
@@ -141,14 +141,11 @@ bool Redis::process_queued_command(void* cmd_ptr) {
   if((cmd_obj->repeat == 0) && (cmd_obj->after == 0)) {
     submit_to_server<ReplyT>(cmd_obj);
   } else {
-    // TODO manage memory somehow
-    cmd_obj->timer = new ev_timer();
 
-    // TODO use cmd_obj->timer->data instead of timer callbacks!!!!!
+    cmd_obj->timer.data = (void*)cmd_obj;
 
-    timer_callbacks[cmd_obj->timer] = (void*)cmd_obj;
-    ev_timer_init(cmd_obj->timer, submit_command_callback<ReplyT>, cmd_obj->after, cmd_obj->repeat);
-    ev_timer_start(EV_DEFAULT_ cmd_obj->timer);
+    ev_timer_init(&cmd_obj->timer, submit_command_callback<ReplyT>, cmd_obj->after, cmd_obj->repeat);
+    ev_timer_start(EV_DEFAULT_ &cmd_obj->timer);
 
     cmd_obj->timer_guard.unlock();
   }
@@ -242,8 +239,11 @@ void Redis::command(const string& cmd) {
   command<redisReply*>(cmd, NULL);
 }
 
-void Redis::command_blocking(const string& cmd) {
-  command_blocking<redisReply*>(cmd);
+bool Redis::command_blocking(const string& cmd) {
+  Command<redisReply*>* c = command_blocking<redisReply*>(cmd);
+  bool succeeded = (c->status() == REDISX_OK);
+  c->free();
+  return succeeded;
 }
 
 } // End namespace redis

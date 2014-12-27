@@ -74,12 +74,12 @@ private:
 
   std::atomic_bool completed;
 
-  ev_timer* timer;
+  ev_timer timer;
   std::mutex timer_guard;
 
   ev_timer* get_timer() {
     std::lock_guard<std::mutex> lg(timer_guard);
-    return timer;
+    return &timer;
   }
 };
 
