@@ -17,28 +17,37 @@ int main(int argc, char* argv[]) {
   redisx::Redis rdx = {"localhost", 6379};
   rdx.run();
 
-  string cmd_str = "SET alaska rules!";
+  rdx.command_blocking("DEL simple_loop:count");
+  rdx.command_blocking("SET simple_loop:count 0");
+
+  cout << "At the start, simple_loop:count = "
+       << rdx.command_blocking<string>("GET simple_loop:count") << endl;
+
+  string cmd_str = "INCR simple_loop:count";
 
   double freq = 10000; // Hz
   double dt = 1 / freq; // s
-  double t = 5; // s
+  double t = 1; // s
 
   cout << "Running \"" << cmd_str << "\" at dt = " << dt
       << "s for " << t << "s..." << endl;
 
-  int count = 0;
-  redisx::Command<const string&>* c = rdx.command<const string&>(
+  atomic_int count(0);
+  redisx::Command<int>* c = rdx.command<int>(
       cmd_str,
-      [&count](const string &cmd, const string &value) {
-        count++;
-      },
+      [&count](const string &cmd, const int& value) { count++; },
+      NULL,
       dt,
-      dt
+      0
   );
 
   double t0 = time_s();
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  rdx.cancel<const string&>(c);
+  rdx.cancel(c);
+
+  cout << "At the end, simple_loop:count = "
+       << rdx.command_blocking<string>("GET simple_loop:count") << endl;
+
   rdx.stop();
 
   double t_elapsed = time_s() - t0;
