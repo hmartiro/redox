@@ -1,5 +1,5 @@
 /**
-* Redis C++11 wrapper.
+* Redox C++11 wrapper.
 */
 
 #pragma once
@@ -22,14 +22,14 @@
 
 #include "command.hpp"
 
-namespace redisx {
+namespace redox {
 
-class Redis {
+class Redox {
 
 public:
 
-  Redis(const std::string& host, const int port);
-  ~Redis();
+  Redox(const std::string& host, const int port);
+  ~Redox();
 
   void run();
   void run_blocking();
@@ -57,13 +57,19 @@ public:
 
   long num_commands_processed();
 
+  template<class ReplyT>
+  static void command_callback(redisAsyncContext *c, void *r, void *privdata);
+
+  static void connected(const redisAsyncContext *c, int status);
+  static void disconnected(const redisAsyncContext *c, int status);
+
 //  void publish(std::string channel, std::string msg);
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
 //  void unsubscribe(std::string channel);
 
 private:
 
-  // Redis server
+  // Redox server
   std::string host;
   int port;
 
@@ -98,35 +104,7 @@ private:
 // ---------------------------
 
 template<class ReplyT>
-void invoke_callback(
-    Command<ReplyT>* cmd_obj,
-    redisReply* reply
-);
-
-template<class ReplyT>
-void command_callback(redisAsyncContext *c, void *r, void *privdata) {
-
-  auto *cmd_obj = (Command<ReplyT> *) privdata;
-  cmd_obj->reply_obj = (redisReply *) r;
-
-  if (cmd_obj->reply_obj->type == REDIS_REPLY_ERROR) {
-    std::cerr << "[ERROR redisx.hpp:121] " << cmd_obj->cmd << ": " << cmd_obj->reply_obj->str << std::endl;
-    cmd_obj->invoke_error(REDISX_ERROR_REPLY);
-
-  } else if(cmd_obj->reply_obj->type == REDIS_REPLY_NIL) {
-    std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
-    cmd_obj->invoke_error(REDISX_NIL_REPLY);
-
-  } else {
-    invoke_callback<ReplyT>(cmd_obj, cmd_obj->reply_obj);
-  }
-
-  // Free the reply object unless told not to
-  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
-}
-
-template<class ReplyT>
-Command<ReplyT>* Redis::command(
+Command<ReplyT>* Redox::command(
   const std::string& cmd,
   const std::function<void(const std::string&, const ReplyT&)>& callback,
   const std::function<void(const std::string&, int status)>& error_callback,
@@ -142,7 +120,7 @@ Command<ReplyT>* Redis::command(
 }
 
 template<class ReplyT>
-bool Redis::cancel(Command<ReplyT>* cmd_obj) {
+bool Redox::cancel(Command<ReplyT>* cmd_obj) {
 
   if(cmd_obj == NULL) {
     std::cerr << "[ERROR] Canceling null command." << std::endl;
@@ -161,7 +139,7 @@ bool Redis::cancel(Command<ReplyT>* cmd_obj) {
 }
 
 template<class ReplyT>
-Command<ReplyT>* Redis::command_blocking(const std::string& cmd) {
+Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
 
   ReplyT val;
   std::atomic_int status(REDISX_UNINIT);

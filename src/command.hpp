@@ -12,7 +12,7 @@
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
 
-namespace redisx {
+namespace redox {
 
 static const int REDISX_UNINIT = -1;
 static const int REDISX_OK = 0;
@@ -25,7 +25,7 @@ static const int REDISX_TIMEOUT = 5;
 template<class ReplyT>
 class Command {
 
-friend class Redis;
+friend class Redox;
 
 public:
   Command(

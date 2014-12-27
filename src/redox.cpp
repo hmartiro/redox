@@ -1,48 +1,46 @@
 /**
-* Redis C++11 wrapper.
+* Redox C++11 wrapper.
 */
 
 #include <signal.h>
 #include <string.h>
-//#include <event2/thread.h>
-#include "redisx.hpp"
+#include "redox.hpp"
 
 using namespace std;
 
-namespace redisx {
+namespace redox {
 
 // Global mutex to manage waiting for connected state
 // TODO get rid of this as the only global variable?
 mutex connected_lock;
 
-/**
-* Dummy function given to hiredis to use for freeing reply
-* objects, so the memory can be managed here instead.
-*/
-void dummy_free_reply(void *reply) {}
-
-void connected(const redisAsyncContext *c, int status) {
+void Redox::connected(const redisAsyncContext *c, int status) {
   if (status != REDIS_OK) {
     cerr << "[ERROR] Connecting to Redis: " << c->errstr << endl;
     return;
   }
 
-  c->c.reader->fn->freeObject = dummy_free_reply;
+  // Disable hiredis automatically freeing reply objects
+  c->c.reader->fn->freeObject = [](void* reply) {};
+
   cout << "Connected to Redis." << endl;
   connected_lock.unlock();
 }
 
-void disconnected(const redisAsyncContext *c, int status) {
+void Redox::disconnected(const redisAsyncContext *c, int status) {
   if (status != REDIS_OK) {
     cerr << "[ERROR] Disconnecting from Redis: " << c->errstr << endl;
     return;
   }
+
+  // Re-enable hiredis automatically freeing reply objects
   c->c.reader->fn->freeObject = freeReplyObject;
+
   cout << "Disconnected from Redis." << endl;
   connected_lock.lock();
 }
 
-Redis::Redis(const string& host, const int port)
+Redox::Redox(const string& host, const int port)
     : host(host), port(port), cmd_count(0), to_exit(false) {
 
   lock_guard<mutex> lg(queue_guard);
@@ -57,18 +55,18 @@ Redis::Redis(const string& host, const int port)
   }
 
   redisLibevAttach(EV_DEFAULT_ c);
-  redisAsyncSetConnectCallback(c, connected);
-  redisAsyncSetDisconnectCallback(c, disconnected);
+  redisAsyncSetConnectCallback(c, Redox::connected);
+  redisAsyncSetDisconnectCallback(c, Redox::disconnected);
 }
 
-Redis::~Redis() {
+Redox::~Redox() {
   redisAsyncDisconnect(c);
   stop();
 }
 
-void Redis::run_blocking() {
+void Redox::run_blocking() {
 
-  // Events to connect to Redis
+  // Events to connect to Redox
   ev_run(EV_DEFAULT_ EVRUN_NOWAIT);
   lock_guard<mutex> lg(connected_lock);
 
@@ -85,29 +83,57 @@ void Redis::run_blocking() {
   exit_waiter.notify_one();
 }
 
-void Redis::run() {
+void Redox::run() {
 
   event_loop_thread = thread([this] { run_blocking(); });
   event_loop_thread.detach();
 }
 
-void Redis::stop() {
+void Redox::stop() {
   to_exit = true;
 }
 
-void Redis::block() {
+void Redox::block() {
   unique_lock<mutex> ul(exit_waiter_lock);
   exit_waiter.wait(ul, [this]() { return to_exit.load(); });
 }
 
+template<class ReplyT>
+void invoke_callback(
+  Command<ReplyT>* cmd_obj,
+  redisReply* reply
+);
+
+template<class ReplyT>
+void Redox::command_callback(redisAsyncContext *c, void *r, void *privdata) {
+
+  auto *cmd_obj = (Command<ReplyT> *) privdata;
+  cmd_obj->reply_obj = (redisReply *) r;
+
+  if (cmd_obj->reply_obj->type == REDIS_REPLY_ERROR) {
+    std::cerr << "[ERROR redisx.hpp:121] " << cmd_obj->cmd << ": " << cmd_obj->reply_obj->str << std::endl;
+    cmd_obj->invoke_error(REDISX_ERROR_REPLY);
+
+  } else if(cmd_obj->reply_obj->type == REDIS_REPLY_NIL) {
+    std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
+    cmd_obj->invoke_error(REDISX_NIL_REPLY);
+
+  } else {
+    invoke_callback<ReplyT>(cmd_obj, cmd_obj->reply_obj);
+  }
+
+  // Free the reply object unless told not to
+  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
+}
+
 /**
-* Submit an asynchronous command to the Redis server. Return
+* Submit an asynchronous command to the Redox server. Return
 * true if succeeded, false otherwise.
 */
 template<class ReplyT>
 bool submit_to_server(Command<ReplyT>* cmd_obj) {
   cmd_obj->pending++;
-  if (redisAsyncCommand(cmd_obj->c, command_callback<ReplyT>, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
+  if (redisAsyncCommand(cmd_obj->c, Redox::command_callback<ReplyT>, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
     cerr << "[ERROR] Could not send \"" << cmd_obj->cmd << "\": " << cmd_obj->c->errstr << endl;
     cmd_obj->invoke_error(REDISX_SEND_ERROR);
     return false;
@@ -129,7 +155,7 @@ void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents)
 }
 
 template<class ReplyT>
-bool Redis::process_queued_command(void* cmd_ptr) {
+bool Redox::process_queued_command(void* cmd_ptr) {
 
   auto& command_map = get_command_map<ReplyT>();
 
@@ -153,7 +179,7 @@ bool Redis::process_queued_command(void* cmd_ptr) {
   return true;
 }
 
-void Redis::process_queued_commands() {
+void Redox::process_queued_commands() {
 
   lock_guard<mutex> lg(queue_guard);
 
@@ -172,20 +198,24 @@ void Redis::process_queued_commands() {
   }
 }
 
-long Redis::num_commands_processed() {
+long Redox::num_commands_processed() {
   lock_guard<mutex> lg(queue_guard);
   return cmd_count;
 }
 
 // ----------------------------
 
-template<> unordered_map<void*, Command<redisReply*>*>& Redis::get_command_map() { return commands_redis_reply; }
+template<> unordered_map<void*, Command<redisReply*>*>&
+Redox::get_command_map() { return commands_redis_reply; }
+
 template<>
 void invoke_callback(Command<redisReply*>* cmd_obj, redisReply* reply) {
   cmd_obj->invoke(reply);
 }
 
-template<> unordered_map<void*, Command<string>*>& Redis::get_command_map() { return commands_string_r; }
+template<> unordered_map<void*, Command<string>*>&
+Redox::get_command_map() { return commands_string_r; }
+
 template<>
 void invoke_callback(Command<string>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
@@ -198,7 +228,9 @@ void invoke_callback(Command<string>* cmd_obj, redisReply* reply) {
   cmd_obj->invoke(s);
 }
 
-template<> unordered_map<void*, Command<char*>*>& Redis::get_command_map() { return commands_char_p; }
+template<> unordered_map<void*, Command<char*>*>&
+Redox::get_command_map() { return commands_char_p; }
+
 template<>
 void invoke_callback(Command<char*>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
@@ -209,7 +241,9 @@ void invoke_callback(Command<char*>* cmd_obj, redisReply* reply) {
   cmd_obj->invoke(reply->str);
 }
 
-template<> unordered_map<void*, Command<int>*>& Redis::get_command_map() { return commands_int; }
+template<> unordered_map<void*, Command<int>*>&
+Redox::get_command_map() { return commands_int; }
+
 template<>
 void invoke_callback(Command<int>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_INTEGER) {
@@ -220,7 +254,9 @@ void invoke_callback(Command<int>* cmd_obj, redisReply* reply) {
   cmd_obj->invoke((int)reply->integer);
 }
 
-template<> unordered_map<void*, Command<long long int>*>& Redis::get_command_map() { return commands_long_long_int; }
+template<> unordered_map<void*, Command<long long int>*>&
+Redox::get_command_map() { return commands_long_long_int; }
+
 template<>
 void invoke_callback(Command<long long int>* cmd_obj, redisReply* reply) {
   if(reply->type != REDIS_REPLY_INTEGER) {
@@ -235,11 +271,11 @@ void invoke_callback(Command<long long int>* cmd_obj, redisReply* reply) {
 // Helpers
 // ----------------------------
 
-void Redis::command(const string& cmd) {
+void Redox::command(const string& cmd) {
   command<redisReply*>(cmd, NULL);
 }
 
-bool Redis::command_blocking(const string& cmd) {
+bool Redox::command_blocking(const string& cmd) {
   Command<redisReply*>* c = command_blocking<redisReply*>(cmd);
   bool succeeded = (c->status() == REDISX_OK);
   c->free();

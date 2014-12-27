@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.4)
-project(redisx)
+project(redox)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -O3")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -g  -fno-omit-frame-pointer")
@@ -12,7 +12,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -O3")
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 
 set(SRC_CORE
-  ${SRC_DIR}/redisx.cpp
+  ${SRC_DIR}/redox.cpp
 )
 
 set(SRC_ALL ${SRC_CORE})

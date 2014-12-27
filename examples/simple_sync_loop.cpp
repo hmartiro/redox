@@ -3,10 +3,10 @@
 */
 
 #include <iostream>
-#include "../src/redisx.hpp"
+#include "../src/redox.hpp"
 
 using namespace std;
-using namespace redisx;
+using namespace redox;
 
 double time_s() {
   unsigned long ms = chrono::system_clock::now().time_since_epoch() / chrono::microseconds(1);
@@ -15,7 +15,7 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  Redis rdx = {"localhost", 6379};
+  Redox rdx = {"localhost", 6379};
   rdx.run();
 
   if(rdx.command_blocking("DEL simple_loop:count")) cout << "Deleted simple_loop:count" << endl;
