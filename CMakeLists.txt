@@ -13,6 +13,7 @@ set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 
 set(SRC_CORE
   ${SRC_DIR}/redox.cpp
+  ${SRC_DIR}/command.cpp
 )
 
 set(SRC_ALL ${SRC_CORE})

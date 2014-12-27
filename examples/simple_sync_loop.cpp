@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 
   for(int i = 0; i < count; i++) {
     Command<int>* c = rdx.command_blocking<int>(cmd_str);
-    if(c->status() != REDIS_OK) cerr << "Bad reply, code: " << c->status() << endl;
+    if(c->status() != REDOX_OK) cerr << "Bad reply, code: " << c->status() << endl;
   }
 
   cout << "At the end, simple_loop:count = "

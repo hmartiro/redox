@@ -17,19 +17,21 @@ int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
   rdx.run();
-//
-//  Command<int>* del_cmd = rdx.command_blocking<int>("DEL simple_loop:count");
-//  cout << "deleted key, reply: " << del_cmd->reply() << endl;
-//  del_cmd->free();
+
   if(rdx.command_blocking("DEL simple_loop:count")) cout << "Deleted simple_loop:count" << endl;
   else cerr << "Failed to delete simple_loop:count" << endl;
+
+  Command<nullptr_t>* null_cmd = rdx.command_blocking<nullptr_t>("GET WFEOIEFJ");
+  if(null_cmd->status() == REDOX_OK) cout << "got nonexistent key." << endl;
+  else cerr << "error with null cmd: " << null_cmd->status() << endl;
+  null_cmd->free();
 
   Command<char*>* set_cmd = rdx.command_blocking<char*>("SET simple_loop:count 0");
   cout << "set key, reply: " << set_cmd->reply() << endl;
   set_cmd->free();
 
   Command<char*>* count_cmd = rdx.command_blocking<char*>("GET simple_loop:count");
-  if(count_cmd->status() == REDISX_OK) {
+  if(count_cmd->status() == REDOX_OK) {
     cout << "At the start, simple_loop:count = " << count_cmd->reply() << endl;
   }
   count_cmd->free();
@@ -38,7 +40,7 @@ int main(int argc, char* argv[]) {
 
   double freq = 10000; // Hz
   double dt = 1 / freq; // s
-  double t = 1; // s
+  double t = 3; // s
 
   cout << "Running \"" << cmd_str << "\" at dt = " << dt
       << "s for " << t << "s..." << endl;

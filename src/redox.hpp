@@ -89,6 +89,7 @@ private:
   std::unordered_map<void*, Command<char*>*> commands_char_p;
   std::unordered_map<void*, Command<int>*> commands_int;
   std::unordered_map<void*, Command<long long int>*> commands_long_long_int;
+  std::unordered_map<void*, Command<std::nullptr_t>*> commands_null;
 
   template<class ReplyT>
   std::unordered_map<void*, Command<ReplyT>*>& get_command_map();
@@ -142,7 +143,7 @@ template<class ReplyT>
 Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
 
   ReplyT val;
-  std::atomic_int status(REDISX_UNINIT);
+  std::atomic_int status(REDOX_UNINIT);
 
   std::condition_variable cv;
   std::mutex m;
@@ -153,7 +154,7 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
     [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
       std::unique_lock<std::mutex> ul(m);
       val = reply;
-      status = REDISX_OK;
+      status = REDOX_OK;
       ul.unlock();
       cv.notify_one();
     },
@@ -167,7 +168,7 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
   );
 
   // Wait until a callback is invoked
-  cv.wait(lk, [&status] { return status != REDISX_UNINIT; });
+  cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
 
   cmd_obj->reply_val = val;
   cmd_obj->reply_status = status;

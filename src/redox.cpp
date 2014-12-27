@@ -98,34 +98,6 @@ void Redox::block() {
   exit_waiter.wait(ul, [this]() { return to_exit.load(); });
 }
 
-template<class ReplyT>
-void invoke_callback(
-  Command<ReplyT>* cmd_obj,
-  redisReply* reply
-);
-
-template<class ReplyT>
-void Redox::command_callback(redisAsyncContext *c, void *r, void *privdata) {
-
-  auto *cmd_obj = (Command<ReplyT> *) privdata;
-  cmd_obj->reply_obj = (redisReply *) r;
-
-  if (cmd_obj->reply_obj->type == REDIS_REPLY_ERROR) {
-    std::cerr << "[ERROR redisx.hpp:121] " << cmd_obj->cmd << ": " << cmd_obj->reply_obj->str << std::endl;
-    cmd_obj->invoke_error(REDISX_ERROR_REPLY);
-
-  } else if(cmd_obj->reply_obj->type == REDIS_REPLY_NIL) {
-    std::cerr << "[WARNING] " << cmd_obj->cmd << ": Nil reply." << std::endl;
-    cmd_obj->invoke_error(REDISX_NIL_REPLY);
-
-  } else {
-    invoke_callback<ReplyT>(cmd_obj, cmd_obj->reply_obj);
-  }
-
-  // Free the reply object unless told not to
-  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
-}
-
 /**
 * Submit an asynchronous command to the Redox server. Return
 * true if succeeded, false otherwise.
@@ -133,9 +105,9 @@ void Redox::command_callback(redisAsyncContext *c, void *r, void *privdata) {
 template<class ReplyT>
 bool submit_to_server(Command<ReplyT>* cmd_obj) {
   cmd_obj->pending++;
-  if (redisAsyncCommand(cmd_obj->c, Redox::command_callback<ReplyT>, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
+  if (redisAsyncCommand(cmd_obj->c, cmd_obj->command_callback, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
     cerr << "[ERROR] Could not send \"" << cmd_obj->cmd << "\": " << cmd_obj->c->errstr << endl;
-    cmd_obj->invoke_error(REDISX_SEND_ERROR);
+    cmd_obj->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
   return true;
@@ -191,6 +163,7 @@ void Redox::process_queued_commands() {
     else if(process_queued_command<char*>(cmd_ptr)) {}
     else if(process_queued_command<int>(cmd_ptr)) {}
     else if(process_queued_command<long long int>(cmd_ptr)) {}
+    else if(process_queued_command<nullptr_t>(cmd_ptr)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
 
     command_queue.pop();
@@ -208,64 +181,20 @@ long Redox::num_commands_processed() {
 template<> unordered_map<void*, Command<redisReply*>*>&
 Redox::get_command_map() { return commands_redis_reply; }
 
-template<>
-void invoke_callback(Command<redisReply*>* cmd_obj, redisReply* reply) {
-  cmd_obj->invoke(reply);
-}
-
 template<> unordered_map<void*, Command<string>*>&
 Redox::get_command_map() { return commands_string_r; }
-
-template<>
-void invoke_callback(Command<string>* cmd_obj, redisReply* reply) {
-  if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
-    cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-string reply." << endl;
-    cmd_obj->invoke_error(REDISX_WRONG_TYPE);
-    return;
-  }
-
-  string s = reply->str;
-  cmd_obj->invoke(s);
-}
 
 template<> unordered_map<void*, Command<char*>*>&
 Redox::get_command_map() { return commands_char_p; }
 
-template<>
-void invoke_callback(Command<char*>* cmd_obj, redisReply* reply) {
-  if(reply->type != REDIS_REPLY_STRING && reply->type != REDIS_REPLY_STATUS) {
-    cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-string reply." << endl;
-    cmd_obj->invoke_error(REDISX_WRONG_TYPE);
-    return;
-  }
-  cmd_obj->invoke(reply->str);
-}
-
 template<> unordered_map<void*, Command<int>*>&
 Redox::get_command_map() { return commands_int; }
-
-template<>
-void invoke_callback(Command<int>* cmd_obj, redisReply* reply) {
-  if(reply->type != REDIS_REPLY_INTEGER) {
-    cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-integer reply." << endl;
-    cmd_obj->invoke_error(REDISX_WRONG_TYPE);
-    return;
-  }
-  cmd_obj->invoke((int)reply->integer);
-}
 
 template<> unordered_map<void*, Command<long long int>*>&
 Redox::get_command_map() { return commands_long_long_int; }
 
-template<>
-void invoke_callback(Command<long long int>* cmd_obj, redisReply* reply) {
-  if(reply->type != REDIS_REPLY_INTEGER) {
-    cerr << "[ERROR] " << cmd_obj->cmd << ": Received non-integer reply." << endl;
-    cmd_obj->invoke_error(REDISX_WRONG_TYPE);
-    return;
-  }
-  cmd_obj->invoke(reply->integer);
-}
+template<> unordered_map<void*, Command<nullptr_t>*>&
+Redox::get_command_map() { return commands_null; }
 
 // ----------------------------
 // Helpers
@@ -277,7 +206,7 @@ void Redox::command(const string& cmd) {
 
 bool Redox::command_blocking(const string& cmd) {
   Command<redisReply*>* c = command_blocking<redisReply*>(cmd);
-  bool succeeded = (c->status() == REDISX_OK);
+  bool succeeded = (c->status() == REDOX_OK);
   c->free();
   return succeeded;
 }

@@ -8,19 +8,20 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <mutex>
 
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
 
 namespace redox {
 
-static const int REDISX_UNINIT = -1;
-static const int REDISX_OK = 0;
-static const int REDISX_SEND_ERROR = 1;
-static const int REDISX_WRONG_TYPE = 2;
-static const int REDISX_NIL_REPLY = 3;
-static const int REDISX_ERROR_REPLY = 4;
-static const int REDISX_TIMEOUT = 5;
+static const int REDOX_UNINIT = -1;
+static const int REDOX_OK = 0;
+static const int REDOX_SEND_ERROR = 1;
+static const int REDOX_WRONG_TYPE = 2;
+static const int REDOX_NIL_REPLY = 3;
+static const int REDOX_ERROR_REPLY = 4;
+static const int REDOX_TIMEOUT = 5;
 
 template<class ReplyT>
 class Command {
@@ -60,7 +61,7 @@ public:
   */
   void free();
 
-  void free_reply_object();
+  static void command_callback(redisAsyncContext *c, void *r, void *privdata);
 
 private:
 
@@ -81,6 +82,12 @@ private:
     std::lock_guard<std::mutex> lg(timer_guard);
     return &timer;
   }
+
+  void free_reply_object();
+
+  void invoke_callback();
+  bool is_error_reply();
+  bool is_nil_reply();
 };
 
 template<class ReplyT>
@@ -94,6 +101,17 @@ Command<ReplyT>::Command(
     pending(0), callback(callback), error_callback(error_callback), completed(false)
 {
   timer_guard.lock();
+}
+
+template<class ReplyT>
+void Command<ReplyT>::command_callback(redisAsyncContext *c, void *r, void *privdata) {
+
+  auto *cmd_obj = (Command<ReplyT> *) privdata;
+  cmd_obj->reply_obj = (redisReply *) r;
+  cmd_obj->invoke_callback();
+
+  // Free the reply object unless told not to
+  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
 }
 
 template<class ReplyT>
@@ -148,7 +166,7 @@ void Command<ReplyT>::free() {
 
 template<class ReplyT>
 const ReplyT& Command<ReplyT>::reply() {
-  if(reply_status != REDISX_OK) {
+  if(reply_status != REDOX_OK) {
     std::cout << "[WARNING] " << cmd
               << ": Accessing value of reply with status != OK." << std::endl;
   }
