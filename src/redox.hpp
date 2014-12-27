@@ -1,5 +1,5 @@
 /**
-* Redox C++11 wrapper.
+* Redis C++11 wrapper.
 */
 
 #pragma once
@@ -31,6 +31,8 @@ public:
   Redox(const std::string& host, const int port);
   ~Redox();
 
+  redisAsyncContext *ctx;
+
   void run();
   void run_blocking();
   void stop();
@@ -47,7 +49,7 @@ public:
   );
 
   template<class ReplyT>
-  bool cancel(Command<ReplyT>* cmd_obj);
+  bool cancel(Command<ReplyT>* c);
 
   template<class ReplyT>
   Command<ReplyT>* command_blocking(const std::string& cmd);
@@ -55,10 +57,8 @@ public:
   void command(const std::string& command);
   bool command_blocking(const std::string& command);
 
-  long num_commands_processed();
-
-  template<class ReplyT>
-  static void command_callback(redisAsyncContext *c, void *r, void *privdata);
+  void incr_cmd_count() { cmd_count++; }
+  long num_commands_processed() { return cmd_count; }
 
   static void connected(const redisAsyncContext *c, int status);
   static void disconnected(const redisAsyncContext *c, int status);
@@ -74,9 +74,7 @@ private:
   int port;
 
   // Number of commands processed
-  long cmd_count;
-
-  redisAsyncContext *c;
+  std::atomic_long cmd_count;
 
   std::atomic_bool to_exit;
   std::mutex exit_waiter_lock;
@@ -114,27 +112,27 @@ Command<ReplyT>* Redox::command(
   bool free_memory
 ) {
   std::lock_guard<std::mutex> lg(queue_guard);
-  auto* cmd_obj = new Command<ReplyT>(c, cmd, callback, error_callback, repeat, after, free_memory);
-  get_command_map<ReplyT>()[(void*)cmd_obj] = cmd_obj;
-  command_queue.push((void*)cmd_obj);
-  return cmd_obj;
+  auto* c = new Command<ReplyT>(this, cmd, callback, error_callback, repeat, after, free_memory);
+  get_command_map<ReplyT>()[(void*)c] = c;
+  command_queue.push((void*)c);
+  return c;
 }
 
 template<class ReplyT>
-bool Redox::cancel(Command<ReplyT>* cmd_obj) {
+bool Redox::cancel(Command<ReplyT>* c) {
 
-  if(cmd_obj == NULL) {
+  if(c == NULL) {
     std::cerr << "[ERROR] Canceling null command." << std::endl;
     return false;
   }
 
-  cmd_obj->timer.data = NULL;
+  c->timer.data = NULL;
 
-  std::lock_guard<std::mutex> lg(cmd_obj->timer_guard);
-  if((cmd_obj->repeat != 0) || (cmd_obj->after != 0))
-    ev_timer_stop(EV_DEFAULT_ &cmd_obj->timer);
+  std::lock_guard<std::mutex> lg(c->timer_guard);
+  if((c->repeat != 0) || (c->after != 0))
+    ev_timer_stop(EV_DEFAULT_ &c->timer);
 
-  cmd_obj->completed = true;
+  c->completed = true;
 
   return true;
 }
@@ -150,7 +148,7 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
 
   std::unique_lock<std::mutex> lk(m);
 
-  Command<ReplyT>* cmd_obj = command<ReplyT>(cmd,
+  Command<ReplyT>* c = command<ReplyT>(cmd,
     [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
       std::unique_lock<std::mutex> ul(m);
       val = reply;
@@ -170,10 +168,10 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
   // Wait until a callback is invoked
   cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
 
-  cmd_obj->reply_val = val;
-  cmd_obj->reply_status = status;
+  c->reply_val = val;
+  c->reply_status = status;
 
-  return cmd_obj;
+  return c;
 }
 
 } // End namespace redis

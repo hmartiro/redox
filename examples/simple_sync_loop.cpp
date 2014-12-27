@@ -1,5 +1,5 @@
 /**
-* Basic asynchronous calls using redisx.
+* Basic synchronous calls using redox.
 */
 
 #include <iostream>
@@ -44,5 +44,6 @@ int main(int argc, char* argv[]) {
   cout << "Sent " << count << " commands in " << t_elapsed << "s, "
     << "that's " << actual_freq << " commands/s." << endl;
 
+  cout << "rdx.num_commands_processed() = " << rdx.num_commands_processed() << endl;
   return 0;
 }

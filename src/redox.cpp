@@ -1,5 +1,5 @@
 /**
-* Redox C++11 wrapper.
+* Redis C++11 wrapper.
 */
 
 #include <signal.h>
@@ -48,19 +48,19 @@ Redox::Redox(const string& host, const int port)
 
   signal(SIGPIPE, SIG_IGN);
 
-  c = redisAsyncConnect(host.c_str(), port);
-  if (c->err) {
-    printf("Error: %s\n", c->errstr);
+  ctx = redisAsyncConnect(host.c_str(), port);
+  if (ctx->err) {
+    printf("Error: %s\n", ctx->errstr);
     return;
   }
 
-  redisLibevAttach(EV_DEFAULT_ c);
-  redisAsyncSetConnectCallback(c, Redox::connected);
-  redisAsyncSetDisconnectCallback(c, Redox::disconnected);
+  redisLibevAttach(EV_DEFAULT_ ctx);
+  redisAsyncSetConnectCallback(ctx, Redox::connected);
+  redisAsyncSetDisconnectCallback(ctx, Redox::disconnected);
 }
 
 Redox::~Redox() {
-  redisAsyncDisconnect(c);
+  redisAsyncDisconnect(ctx);
   stop();
 }
 
@@ -103,11 +103,11 @@ void Redox::block() {
 * true if succeeded, false otherwise.
 */
 template<class ReplyT>
-bool submit_to_server(Command<ReplyT>* cmd_obj) {
-  cmd_obj->pending++;
-  if (redisAsyncCommand(cmd_obj->c, cmd_obj->command_callback, (void*)cmd_obj, cmd_obj->cmd.c_str()) != REDIS_OK) {
-    cerr << "[ERROR] Could not send \"" << cmd_obj->cmd << "\": " << cmd_obj->c->errstr << endl;
-    cmd_obj->invoke_error(REDOX_SEND_ERROR);
+bool submit_to_server(Command<ReplyT>* c) {
+  c->pending++;
+  if (redisAsyncCommand(c->rdx->ctx, c->command_callback, (void*)c, c->cmd.c_str()) != REDIS_OK) {
+    cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
+    c->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
   return true;
@@ -122,30 +122,30 @@ void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents)
     return;
   }
 
-  auto cmd_obj = (Command<ReplyT>*)timer->data;
-  submit_to_server<ReplyT>(cmd_obj);
+  auto c = (Command<ReplyT>*)timer->data;
+  submit_to_server<ReplyT>(c);
 }
 
 template<class ReplyT>
-bool Redox::process_queued_command(void* cmd_ptr) {
+bool Redox::process_queued_command(void* c_ptr) {
 
   auto& command_map = get_command_map<ReplyT>();
 
-  auto it = command_map.find(cmd_ptr);
+  auto it = command_map.find(c_ptr);
   if(it == command_map.end()) return false;
-  Command<ReplyT>* cmd_obj = it->second;
-  command_map.erase(cmd_ptr);
+  Command<ReplyT>* c = it->second;
+  command_map.erase(c_ptr);
 
-  if((cmd_obj->repeat == 0) && (cmd_obj->after == 0)) {
-    submit_to_server<ReplyT>(cmd_obj);
+  if((c->repeat == 0) && (c->after == 0)) {
+    submit_to_server<ReplyT>(c);
   } else {
 
-    cmd_obj->timer.data = (void*)cmd_obj;
+    c->timer.data = (void*)c;
 
-    ev_timer_init(&cmd_obj->timer, submit_command_callback<ReplyT>, cmd_obj->after, cmd_obj->repeat);
-    ev_timer_start(EV_DEFAULT_ &cmd_obj->timer);
+    ev_timer_init(&c->timer, submit_command_callback<ReplyT>, c->after, c->repeat);
+    ev_timer_start(EV_DEFAULT_ &c->timer);
 
-    cmd_obj->timer_guard.unlock();
+    c->timer_guard.unlock();
   }
 
   return true;
@@ -157,23 +157,17 @@ void Redox::process_queued_commands() {
 
   while(!command_queue.empty()) {
 
-    void* cmd_ptr = command_queue.front();
-    if(process_queued_command<redisReply*>(cmd_ptr)) {}
-    else if(process_queued_command<string>(cmd_ptr)) {}
-    else if(process_queued_command<char*>(cmd_ptr)) {}
-    else if(process_queued_command<int>(cmd_ptr)) {}
-    else if(process_queued_command<long long int>(cmd_ptr)) {}
-    else if(process_queued_command<nullptr_t>(cmd_ptr)) {}
+    void* c_ptr = command_queue.front();
+    if(process_queued_command<redisReply*>(c_ptr)) {}
+    else if(process_queued_command<string>(c_ptr)) {}
+    else if(process_queued_command<char*>(c_ptr)) {}
+    else if(process_queued_command<int>(c_ptr)) {}
+    else if(process_queued_command<long long int>(c_ptr)) {}
+    else if(process_queued_command<nullptr_t>(c_ptr)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
 
     command_queue.pop();
-    cmd_count++;
   }
-}
-
-long Redox::num_commands_processed() {
-  lock_guard<mutex> lg(queue_guard);
-  return cmd_count;
 }
 
 // ----------------------------

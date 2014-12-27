@@ -23,6 +23,8 @@ static const int REDOX_NIL_REPLY = 3;
 static const int REDOX_ERROR_REPLY = 4;
 static const int REDOX_TIMEOUT = 5;
 
+class Redox;
+
 template<class ReplyT>
 class Command {
 
@@ -30,7 +32,7 @@ friend class Redox;
 
 public:
   Command(
-    redisAsyncContext* c,
+    Redox* rdx,
     const std::string& cmd,
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
@@ -38,13 +40,14 @@ public:
     bool free_memory
   );
 
+  Redox* rdx;
+
   const std::string cmd;
   const double repeat;
   const double after;
 
   const bool free_memory;
 
-  redisAsyncContext* c;
   redisReply* reply_obj;
 
   std::atomic_int pending;
@@ -92,26 +95,29 @@ private:
 
 template<class ReplyT>
 Command<ReplyT>::Command(
-    redisAsyncContext* c,
+    Redox* rdx,
     const std::string& cmd,
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
     double repeat, double after, bool free_memory
-) : cmd(cmd), repeat(repeat), after(after), free_memory(free_memory), c(c), reply_obj(NULL),
+) : rdx(rdx), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory), reply_obj(NULL),
     pending(0), callback(callback), error_callback(error_callback), completed(false)
 {
   timer_guard.lock();
 }
 
 template<class ReplyT>
-void Command<ReplyT>::command_callback(redisAsyncContext *c, void *r, void *privdata) {
+void Command<ReplyT>::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
-  auto *cmd_obj = (Command<ReplyT> *) privdata;
-  cmd_obj->reply_obj = (redisReply *) r;
-  cmd_obj->invoke_callback();
+  auto *c = (Command<ReplyT> *) privdata;
+  c->reply_obj = (redisReply *) r;
+  c->invoke_callback();
 
   // Free the reply object unless told not to
-  if(cmd_obj->free_memory) cmd_obj->free_reply_object();
+  if(c->free_memory) c->free_reply_object();
+
+  // Increment the Redox object command counter
+  c->rdx->incr_cmd_count();
 }
 
 template<class ReplyT>
