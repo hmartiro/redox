@@ -15,6 +15,7 @@
 #include <string>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
@@ -35,8 +36,10 @@ public:
 
   void run();
   void run_blocking();
-  void stop();
+
+  void stop_signal();
   void block();
+  void stop();
 
   template<class ReplyT>
   Command<ReplyT>* command(
@@ -67,16 +70,34 @@ public:
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
 //  void unsubscribe(std::string channel);
 
+  std::atomic_int commands_created = {0};
+  std::atomic_int commands_deleted = {0};
+
+  bool is_active_command(void* c_ptr) {
+    return active_commands.find(c_ptr) != active_commands.end();
+  }
+
+  void remove_active_command(void* c_ptr) {
+    active_commands.erase(c_ptr);
+  }
+
 private:
 
   // Redox server
   std::string host;
   int port;
 
-  // Number of commands processed
-  std::atomic_long cmd_count;
+  // Block run() until redis is connected
+  std::mutex connected_lock;
 
-  std::atomic_bool to_exit;
+  // Dynamically allocated libev event loop
+  struct ev_loop* evloop;
+
+  // Number of commands processed
+  std::atomic_long cmd_count = {0};
+
+  std::atomic_bool to_exit = {false}; // Signal to exit
+  std::atomic_bool exited = {false}; // Event thread exited
   std::mutex exit_waiter_lock;
   std::condition_variable exit_waiter;
 
@@ -98,6 +119,9 @@ private:
 
   template<class ReplyT>
   bool process_queued_command(void* cmd_ptr);
+
+  // Commands created but not yet deleted
+  std::unordered_set<void*> active_commands;
 };
 
 // ---------------------------
@@ -113,25 +137,24 @@ Command<ReplyT>* Redox::command(
 ) {
   std::lock_guard<std::mutex> lg(queue_guard);
   auto* c = new Command<ReplyT>(this, cmd, callback, error_callback, repeat, after, free_memory);
-  get_command_map<ReplyT>()[(void*)c] = c;
-  command_queue.push((void*)c);
+  void* c_ptr = (void*)c;
+  get_command_map<ReplyT>()[c_ptr] = c;
+  command_queue.push(c_ptr);
+  active_commands.insert(c_ptr);
+  commands_created += 1;
+//  std::cout << "[DEBUG] Created Command " << commands_created << " at " << c << std::endl;
   return c;
 }
 
 template<class ReplyT>
 bool Redox::cancel(Command<ReplyT>* c) {
 
-  if(c == NULL) {
+  if(c == nullptr) {
     std::cerr << "[ERROR] Canceling null command." << std::endl;
     return false;
   }
 
-  c->timer.data = NULL;
-
-  std::lock_guard<std::mutex> lg(c->timer_guard);
-  if((c->repeat != 0) || (c->after != 0))
-    ev_timer_stop(EV_DEFAULT_ &c->timer);
-
+  std::cout << "[INFO] Canceling command at " << c << std::endl;
   c->completed = true;
 
   return true;

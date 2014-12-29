@@ -26,9 +26,14 @@ static const int REDOX_TIMEOUT = 5;
 class Redox;
 
 template<class ReplyT>
+void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
+
+template<class ReplyT>
 class Command {
 
 friend class Redox;
+
+friend void submit_command_callback<ReplyT>(struct ev_loop* loop, ev_timer* timer, int revents);
 
 public:
   Command(
@@ -48,15 +53,16 @@ public:
 
   const bool free_memory;
 
-  redisReply* reply_obj;
+  redisReply* reply_obj = nullptr;
 
-  std::atomic_int pending;
+  std::atomic_int pending = {0};
 
   void invoke(const ReplyT& reply);
   void invoke_error(int status);
 
   const ReplyT& reply();
   int status() { return reply_status; };
+  bool is_completed() { return completed; }
 
   /**
   * Called by the user to free the redisReply object, when the free_memory
@@ -64,7 +70,7 @@ public:
   */
   void free();
 
-  static void command_callback(redisAsyncContext *c, void *r, void *privdata);
+  void process_reply();
 
 private:
 
@@ -76,7 +82,7 @@ private:
   ReplyT reply_val;
   int reply_status;
 
-  std::atomic_bool completed;
+  std::atomic_bool completed = {false};
 
   ev_timer timer;
   std::mutex timer_guard;
@@ -86,7 +92,11 @@ private:
     return &timer;
   }
 
+  // Make sure we don't free resources until details taken care of
+  std::mutex free_guard;
+
   void free_reply_object();
+  static void free_command(Command<ReplyT>* c);
 
   void invoke_callback();
   bool is_error_reply();
@@ -100,74 +110,74 @@ Command<ReplyT>::Command(
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
     double repeat, double after, bool free_memory
-) : rdx(rdx), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory), reply_obj(NULL),
-    pending(0), callback(callback), error_callback(error_callback), completed(false)
+) : rdx(rdx), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory),
+    callback(callback), error_callback(error_callback)
 {
   timer_guard.lock();
 }
 
 template<class ReplyT>
-void Command<ReplyT>::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
+void Command<ReplyT>::process_reply() {
 
-  auto *c = (Command<ReplyT> *) privdata;
-  c->reply_obj = (redisReply *) r;
-  c->invoke_callback();
+  free_guard.lock();
 
-  // Free the reply object unless told not to
-  if(c->free_memory) c->free_reply_object();
+  invoke_callback();
 
-  // Increment the Redox object command counter
-  c->rdx->incr_cmd_count();
+  pending--;
+
+  if(!free_memory) {
+    // Allow free() method to free memory
+    free_guard.unlock();
+    return;
+  }
+
+  free_reply_object();
+
+  if((pending == 0) && (repeat == 0)) {
+    free_command(this);
+  } else {
+    free_guard.unlock();
+  }
 }
 
 template<class ReplyT>
 void Command<ReplyT>::invoke(const ReplyT& r) {
-
   if(callback) callback(cmd, r);
-
-  pending--;
-  if(!free_memory) return;
-  if(pending != 0) return;
-  if(completed || (repeat == 0)) {
-//    std::cout << cmd << ": suicide!" << std::endl;
-    delete this;
-  }
 }
 
 template<class ReplyT>
 void Command<ReplyT>::invoke_error(int status) {
-
   if(error_callback) error_callback(cmd, status);
-
-  pending--;
-  if(!free_memory) return;
-  if(pending != 0) return;
-  if(completed || (repeat == 0)) {
-//    std::cout << cmd << ": suicide!" << std::endl;
-    delete this;
-  }
 }
 
 template<class ReplyT>
 void Command<ReplyT>::free_reply_object() {
 
-  if(reply_obj == NULL) {
-    std::cerr << "[ERROR] " << cmd << ": Attempting to double free reply object!" << std::endl;
+  if(reply_obj == nullptr) {
+    std::cerr << "[ERROR] " << cmd << ": Attempting to double free reply object." << std::endl;
     return;
   }
 
   freeReplyObject(reply_obj);
-  reply_obj = NULL;
+  reply_obj = nullptr;
+}
+
+template<class ReplyT>
+void Command<ReplyT>::free_command(Command<ReplyT>* c) {
+  c->rdx->commands_deleted += 1;
+  c->rdx->remove_active_command(c);
+//  std::cout << "[INFO] Deleted Command " << c->rdx->commands_created << " at " << c << std::endl;
+  delete c;
 }
 
 template<class ReplyT>
 void Command<ReplyT>::free() {
 
+  free_guard.lock();
   free_reply_object();
+  free_guard.unlock();
 
-  // Commit suicide
-//  std::cout << cmd << ": suicide, by calling free()!" << std::endl;
-  delete this;
+  free_command(this);
 }
 
 template<class ReplyT>

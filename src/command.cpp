@@ -64,7 +64,7 @@ void Command<char*>::invoke_callback() {
 
 template<>
 void Command<int>::invoke_callback() {
-
+//  std::cout << "invoking int callback" << std::endl;
   if(is_error_reply()) invoke_error(REDOX_ERROR_REPLY);
   else if(is_nil_reply()) invoke_error(REDOX_NIL_REPLY);
 

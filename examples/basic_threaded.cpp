@@ -1,30 +1,30 @@
 /**
-* Basic asynchronous calls using redisx.
+*
 */
 
 #include <iostream>
-#include <thread>
 #include <chrono>
-#include "../src/redisx.hpp"
+#include <thread>
+#include "../src/redox.hpp"
 
 using namespace std;
 
-redisx::Redis rdx = {"localhost", 6379};
+redox::Redox rdx = {"localhost", 6379};
 
 int main(int argc, char* argv[]) {
 
   rdx.run();
 
   thread setter([]() {
-    while(true) {
-      rdx.command("INCR counter");
+    for(int i = 0; i < 5000; i++) {
+      rdx.command<int>("INCR counter");
       this_thread::sleep_for(chrono::milliseconds(1));
     }
   });
 
   thread getter([]() {
-    while(true) {
-      rdx.command<const string &>(
+    for(int i = 0; i < 5; i++) {
+      rdx.command<string>(
           "GET counter",
           [](const string& cmd, const string& value) {
             cout << cmd << ": " << value << endl;
@@ -36,6 +36,8 @@ int main(int argc, char* argv[]) {
 
   setter.join();
   getter.join();
+
+  rdx.stop();
 
   return 0;
 };
