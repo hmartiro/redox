@@ -147,14 +147,32 @@ void Redox::stop() {
 template<class ReplyT>
 void command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
-  Command<ReplyT>* c = (Command<ReplyT>*) privdata;
-  redisReply* reply_obj = (redisReply*) r;
   Redox* rdx = (Redox*) ctx->data;
+  long id = (long)privdata;
+  redisReply* reply_obj = (redisReply*) r;
 
-  if(!rdx->is_active_command(c)) {
+  auto& command_map = rdx->get_command_map<ReplyT>();
+  auto it = command_map.find(id);
+  if(it == command_map.end()) {
+    cout << "[ERROR] Couldn't find Command " << id << " in command_map." << endl;
+    freeReplyObject(r);
+    return;
+  };
+  Command<ReplyT>* c = it->second;
+
+  if(!rdx->is_active_command(c->id)) {
     std::cout << "[INFO] Ignoring callback, command " << c << " was freed." << std::endl;
     freeReplyObject(r);
     return;
+  }
+
+  if(c->cmd == "GET simple_loop:count") {
+    std::cout << "In command_callback = " << c->cmd << " at " << c << ", reply_obj = " << reply_obj << std::endl;
+    std::cout << "reply type: " << reply_obj->type << std::endl;
+    std::cout << "reply int: " << reply_obj->integer << std::endl;
+    std::cout << "reply str: " << reply_obj->str << std::endl;
+//    std::string s(reply_obj->str);
+//    std::cout << "string object: " << s << std::endl;
   }
 
   c->reply_obj = reply_obj;
@@ -170,8 +188,11 @@ void command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 */
 template<class ReplyT>
 bool submit_to_server(Command<ReplyT>* c) {
+  if(c->cmd == "GET simple_loop:count") {
+    std::cout << "submit_to_server for cmd at " << c << ": " << c->cmd << std::endl;
+  }
   c->pending++;
-  if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c, c->cmd.c_str()) != REDIS_OK) {
+  if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
     cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
     c->invoke_error(REDOX_SEND_ERROR);
     return false;
@@ -182,7 +203,16 @@ bool submit_to_server(Command<ReplyT>* c) {
 template<class ReplyT>
 void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents) {
 
-  auto c = (Command<ReplyT>*)timer->data;
+  Redox* rdx = (Redox*) ev_userdata(loop);
+  long id = (long)timer->data;
+
+  auto& command_map = rdx->get_command_map<ReplyT>();
+  auto it = command_map.find(id);
+  if(it == command_map.end()) {
+    cout << "[ERROR] Couldn't find Command " << id << " in command_map." << endl;
+    return;
+  };
+  Command<ReplyT>* c = it->second;
 
   if(c->is_completed()) {
 
@@ -202,20 +232,23 @@ void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents)
 }
 
 template<class ReplyT>
-bool Redox::process_queued_command(void* c_ptr) {
+bool Redox::process_queued_command(long id) {
 
   auto& command_map = get_command_map<ReplyT>();
 
-  auto it = command_map.find(c_ptr);
+  auto it = command_map.find(id);
   if(it == command_map.end()) return false;
   Command<ReplyT>* c = it->second;
-  command_map.erase(c_ptr);
+
+  if(c->cmd == "GET simple_loop:count") {
+    std::cout << "process_queued_command for cmd at " << c << ": " << c->cmd << std::endl;
+  }
 
   if((c->repeat == 0) && (c->after == 0)) {
     submit_to_server<ReplyT>(c);
   } else {
 
-    c->timer.data = (void*)c;
+    c->timer.data = (void*)c->id;
 
     ev_timer_init(&c->timer, submit_command_callback<ReplyT>, c->after, c->repeat);
     ev_timer_start(evloop, &c->timer);
@@ -232,13 +265,13 @@ void Redox::process_queued_commands() {
 
   while(!command_queue.empty()) {
 
-    void* c_ptr = command_queue.front();
-    if(process_queued_command<redisReply*>(c_ptr)) {}
-    else if(process_queued_command<string>(c_ptr)) {}
-    else if(process_queued_command<char*>(c_ptr)) {}
-    else if(process_queued_command<int>(c_ptr)) {}
-    else if(process_queued_command<long long int>(c_ptr)) {}
-    else if(process_queued_command<nullptr_t>(c_ptr)) {}
+    long id = command_queue.front();
+    if(process_queued_command<redisReply*>(id)) {}
+    else if(process_queued_command<string>(id)) {}
+    else if(process_queued_command<char*>(id)) {}
+    else if(process_queued_command<int>(id)) {}
+    else if(process_queued_command<long long int>(id)) {}
+    else if(process_queued_command<nullptr_t>(id)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
 
     command_queue.pop();
@@ -247,22 +280,22 @@ void Redox::process_queued_commands() {
 
 // ----------------------------
 
-template<> unordered_map<void*, Command<redisReply*>*>&
+template<> unordered_map<long, Command<redisReply*>*>&
 Redox::get_command_map() { return commands_redis_reply; }
 
-template<> unordered_map<void*, Command<string>*>&
+template<> unordered_map<long, Command<string>*>&
 Redox::get_command_map() { return commands_string_r; }
 
-template<> unordered_map<void*, Command<char*>*>&
+template<> unordered_map<long, Command<char*>*>&
 Redox::get_command_map() { return commands_char_p; }
 
-template<> unordered_map<void*, Command<int>*>&
+template<> unordered_map<long, Command<int>*>&
 Redox::get_command_map() { return commands_int; }
 
-template<> unordered_map<void*, Command<long long int>*>&
+template<> unordered_map<long, Command<long long int>*>&
 Redox::get_command_map() { return commands_long_long_int; }
 
-template<> unordered_map<void*, Command<nullptr_t>*>&
+template<> unordered_map<long, Command<nullptr_t>*>&
 Redox::get_command_map() { return commands_null; }
 
 // ----------------------------

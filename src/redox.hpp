@@ -70,16 +70,21 @@ public:
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
 //  void unsubscribe(std::string channel);
 
-  std::atomic_int commands_created = {0};
-  std::atomic_int commands_deleted = {0};
+  std::atomic_long commands_created = {0};
+  std::atomic_long commands_deleted = {0};
 
-  bool is_active_command(void* c_ptr) {
-    return active_commands.find(c_ptr) != active_commands.end();
+  bool is_active_command(const long id) {
+    return active_commands.find(id) != active_commands.end();
   }
 
-  void remove_active_command(void* c_ptr) {
-    active_commands.erase(c_ptr);
+  template<class ReplyT>
+  void remove_active_command(const long id) {
+    active_commands.erase(id);
+    get_command_map<ReplyT>().erase(id);
   }
+
+  template<class ReplyT>
+  std::unordered_map<long, Command<ReplyT>*>& get_command_map();
 
 private:
 
@@ -103,25 +108,22 @@ private:
 
   std::thread event_loop_thread;
 
-  std::unordered_map<void*, Command<redisReply*>*> commands_redis_reply;
-  std::unordered_map<void*, Command<std::string>*> commands_string_r;
-  std::unordered_map<void*, Command<char*>*> commands_char_p;
-  std::unordered_map<void*, Command<int>*> commands_int;
-  std::unordered_map<void*, Command<long long int>*> commands_long_long_int;
-  std::unordered_map<void*, Command<std::nullptr_t>*> commands_null;
+  std::unordered_map<long, Command<redisReply*>*> commands_redis_reply;
+  std::unordered_map<long, Command<std::string>*> commands_string_r;
+  std::unordered_map<long, Command<char*>*> commands_char_p;
+  std::unordered_map<long, Command<int>*> commands_int;
+  std::unordered_map<long, Command<long long int>*> commands_long_long_int;
+  std::unordered_map<long, Command<std::nullptr_t>*> commands_null;
 
-  template<class ReplyT>
-  std::unordered_map<void*, Command<ReplyT>*>& get_command_map();
-
-  std::queue<void*> command_queue;
+  std::queue<long> command_queue;
   std::mutex queue_guard;
   void process_queued_commands();
 
   template<class ReplyT>
-  bool process_queued_command(void* cmd_ptr);
+  bool process_queued_command(long id);
 
-  // Commands created but not yet deleted
-  std::unordered_set<void*> active_commands;
+  // Commands created but not yet deleted (stored by id)
+  std::unordered_set<long> active_commands;
 };
 
 // ---------------------------
@@ -136,13 +138,18 @@ Command<ReplyT>* Redox::command(
   bool free_memory
 ) {
   std::lock_guard<std::mutex> lg(queue_guard);
-  auto* c = new Command<ReplyT>(this, cmd, callback, error_callback, repeat, after, free_memory);
-  void* c_ptr = (void*)c;
-  get_command_map<ReplyT>()[c_ptr] = c;
-  command_queue.push(c_ptr);
-  active_commands.insert(c_ptr);
+
   commands_created += 1;
-//  std::cout << "[DEBUG] Created Command " << commands_created << " at " << c << std::endl;
+  auto* c = new Command<ReplyT>(this, commands_created, cmd,
+    callback, error_callback, repeat, after, free_memory);
+
+  get_command_map<ReplyT>()[c->id] = c;
+  active_commands.insert(c->id);
+  command_queue.push(c->id);
+  std::cout << "[DEBUG] Created Command " << c->id << " at " << c << std::endl;
+  if(cmd == "GET simple_loop:count") {
+    std::cout << "Command created at " << c << ": " << c->cmd << std::endl;
+  }
   return c;
 }
 
@@ -154,7 +161,7 @@ bool Redox::cancel(Command<ReplyT>* c) {
     return false;
   }
 
-  std::cout << "[INFO] Canceling command at " << c << std::endl;
+  std::cout << "[INFO] Canceling command " << c->id << " at " << c << std::endl;
   c->completed = true;
 
   return true;
@@ -174,6 +181,7 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
   Command<ReplyT>* c = command<ReplyT>(cmd,
     [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
       std::unique_lock<std::mutex> ul(m);
+      std::cout << "success callback: " << cmd_str << std::endl;
       val = reply;
       status = REDOX_OK;
       ul.unlock();
@@ -187,10 +195,10 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
     },
     0, 0, false // No repeats, don't free memory
   );
-
+  std::cout << "command blocking cv wait starting" << std::endl;
   // Wait until a callback is invoked
   cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
-
+  std::cout << "command blocking cv wait over" << std::endl;
   c->reply_val = val;
   c->reply_status = status;
 

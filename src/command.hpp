@@ -38,6 +38,7 @@ friend void submit_command_callback<ReplyT>(struct ev_loop* loop, ev_timer* time
 public:
   Command(
     Redox* rdx,
+    long id,
     const std::string& cmd,
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
@@ -47,6 +48,7 @@ public:
 
   Redox* rdx;
 
+  const long id;
   const std::string cmd;
   const double repeat;
   const double after;
@@ -106,11 +108,12 @@ private:
 template<class ReplyT>
 Command<ReplyT>::Command(
     Redox* rdx,
+    long id,
     const std::string& cmd,
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
     double repeat, double after, bool free_memory
-) : rdx(rdx), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory),
+) : rdx(rdx), id(id), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory),
     callback(callback), error_callback(error_callback)
 {
   timer_guard.lock();
@@ -119,6 +122,11 @@ Command<ReplyT>::Command(
 template<class ReplyT>
 void Command<ReplyT>::process_reply() {
 
+  if(cmd == "GET simple_loop:count") {
+    std::cout << "In process_reply, cmd = " << cmd << ", reply_obj = " << reply_obj << std::endl;
+    std::cout << "reply int: " << reply_obj->integer << std::endl;
+    std::cout << "reply str: " << reply_obj->str << std::endl;
+  }
   free_guard.lock();
 
   invoke_callback();
@@ -126,10 +134,12 @@ void Command<ReplyT>::process_reply() {
   pending--;
 
   if(!free_memory) {
+    std::cout << "Command memory not being freed, free_memory = " << free_memory << std::endl;
     // Allow free() method to free memory
     free_guard.unlock();
     return;
   }
+
 
   free_reply_object();
 
@@ -165,7 +175,7 @@ void Command<ReplyT>::free_reply_object() {
 template<class ReplyT>
 void Command<ReplyT>::free_command(Command<ReplyT>* c) {
   c->rdx->commands_deleted += 1;
-  c->rdx->remove_active_command(c);
+  c->rdx->template remove_active_command<ReplyT>(c->id);
 //  std::cout << "[INFO] Deleted Command " << c->rdx->commands_created << " at " << c << std::endl;
   delete c;
 }
