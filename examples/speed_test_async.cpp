@@ -18,7 +18,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
-  rdx.run();
+  rdx.start();
 
   if(rdx.command_blocking("SET simple_loop:count 0")) {
     cout << "Reset the counter to zero." << endl;
@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
 
   // Wait for t time, then stop the command.
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  rdx.cancel(c);
+  c->cancel();
 
   // Get the final value of the counter
   auto get_cmd = rdx.command_blocking<string>("GET simple_loop:count");

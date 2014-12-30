@@ -1,9 +1,9 @@
 /**
-* Basic asynchronous calls using redisx.
+* Basic asynchronous calls using redox.
 */
 
 #include <iostream>
-#include "../src/redisx.hpp"
+#include "../src/redox.hpp"
 
 using namespace std;
 
@@ -14,8 +14,8 @@ unsigned long time_ms() {
 
 int main(int argc, char* argv[]) {
 
-  redisx::Redis rdx = {"localhost", 6379};
-  rdx.run();
+  redox::Redox rdx = {"localhost", 6379};
+  rdx.start();
 
   // TODO wait for this somehow
   rdx.command("DEL test");

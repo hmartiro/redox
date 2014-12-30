@@ -25,69 +25,134 @@
 
 namespace redox {
 
+// Default to a local Redis server
+static const std::string REDIS_DEFAULT_HOST = "localhost";
+static const int REDIS_DEFAULT_PORT = 6379;
+
 class Redox {
 
 public:
 
-  Redox(const std::string& host, const int port);
+  /**
+  * Initialize everything, connect over TCP to a Redis server.
+  */
+  Redox(const std::string& host = REDIS_DEFAULT_HOST, const int port = REDIS_DEFAULT_PORT);
   ~Redox();
 
-  redisAsyncContext *ctx;
+  /**
+  * Connect to Redis and start the event loop in a separate thread. Returns
+  * once everything is ready to go.
+  */
+  void start();
 
-  void run();
-
+  /**
+  * Signal the event loop to stop processing commands and shut down.
+  */
   void stop_signal();
+
+  /**
+  * Wait for the event loop to exit, then return.
+  */
   void block();
+
+  /**
+  * Signal the event loop to stop, wait for all pending commands to be processed,
+  * and shut everything down. A simple combination of stop_signal() and block().
+  */
   void stop();
 
+  /**
+  * Create an asynchronous Redis command to be executed. Return a pointer to a
+  * Command object that represents this command. If the command succeeded, the
+  * callback is invoked with a reference to the reply. If something went wrong,
+  * the error_callback is invoked with an error_code. One of the two is guaranteed
+  * to be invoked. The method is templated by the expected data type of the reply,
+  * and can be one of {redisReply*, string, char*, int, long long int, nullptr_t}.
+  *
+  *            cmd: The command to be run.
+  *       callback: A function invoked on a successful reply from the server.
+  * error_callback: A function invoked on some error state.
+  *         repeat: If non-zero, executes the command continuously at the given rate
+  *                 in seconds, until cancel() is called on the Command object.
+  *          after: If non-zero, executes the command after the given delay in seconds.
+  *    free_memory: If true (default), Redox automatically frees the Command object and
+  *                 reply from the server after a callback is invoked. If false, the
+  *                 user is responsible for calling free() on the Command object.
+  */
   template<class ReplyT>
   Command<ReplyT>* command(
     const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback = NULL,
-    const std::function<void(const std::string&, int status)>& error_callback = NULL,
+    const std::function<void(const std::string&, const ReplyT&)>& callback = nullptr,
+    const std::function<void(const std::string&, int status)>& error_callback = nullptr,
     double repeat = 0.0,
     double after = 0.0,
     bool free_memory = true
   );
 
-  template<class ReplyT>
-  bool cancel(Command<ReplyT>* c);
-
+  /**
+  * A wrapper around command() for synchronous use. Waits for a reply, populates it
+  * into the Command object, and returns when complete. The user can retrieve the
+  * results from the Command object - ok() will tell you if the call succeeded,
+  * status() will give the error code, and reply() will return the reply data if
+  * the call succeeded.
+  */
   template<class ReplyT>
   Command<ReplyT>* command_blocking(const std::string& cmd);
 
-  void command(const std::string& command);
-  bool command_blocking(const std::string& command);
-
-  void incr_cmd_count() { cmd_count++; }
+  /**
+  * Return the total number of successful commands processed by this Redox instance.
+  */
   long num_commands_processed() { return cmd_count; }
 
-  static void connected(const redisAsyncContext *c, int status);
-  static void disconnected(const redisAsyncContext *c, int status);
+  // Hiredis context, left public to allow low-level access
+  redisAsyncContext *ctx;
 
+  // ------------------------------------------------
+  // Wrapper methods for convenience only
+  // ------------------------------------------------
+
+  /**
+  * Non-templated version of command in case you really don't care
+  * about the reply and just want to send something off.
+  */
+  void command(const std::string& command);
+
+  /**
+  * Non-templated version of command_blocking in case you really don't
+  * care about the reply. Returns true if succeeded, false if error.
+  */
+  bool command_blocking(const std::string& command);
+
+  /**
+  * Redis GET command wrapper - return the value for the given key, or throw
+  * an exception if there is an error. Blocking call, of course.
+  */
+  std::string get(const std::string& key);
+
+  /**
+  * Redis SET command wrapper - set the value for the given key. Return
+  * true if succeeded, false if error.
+  */
+  bool set(const std::string& key, const std::string& value);
+
+  /**
+  * Redis DEL command wrapper - delete the given key. Return true if succeeded,
+  * false if error.
+  */
+  bool del(const std::string& key);
+
+  // TODO pub/sub
 //  void publish(std::string channel, std::string msg);
 //  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
 //  void unsubscribe(std::string channel);
 
-  std::atomic_long commands_created = {0};
-  std::atomic_long commands_deleted = {0};
-
+  // Invoked by Command objects when they are completed
   template<class ReplyT>
   void remove_active_command(const long id) {
     std::lock_guard<std::mutex> lg1(command_map_guard);
     get_command_map<ReplyT>().erase(id);
     commands_deleted += 1;
   }
-
-  template<class ReplyT>
-  Command<ReplyT>* find_command(long id);
-
-  template<class ReplyT>
-  std::unordered_map<long, Command<ReplyT>*>& get_command_map();
-
-  // Helpers
-  std::string get(const std::string& key);
-  bool set(const std::string& key, const std::string& value);
 
 private:
 
@@ -104,24 +169,40 @@ private:
   // Number of commands processed
   std::atomic_long cmd_count = {0};
 
+  // Track of Command objects allocated. Also provides unique Command IDs.
+  std::atomic_long commands_created = {0};
+  std::atomic_long commands_deleted = {0};
+
+  // Separate thread to have a non-blocking event loop
+  std::thread event_loop_thread;
+
+  // Variable and CV to know when the event loop starts running
   std::atomic_bool running = {false};
   std::mutex running_waiter_lock;
   std::condition_variable running_waiter;
 
+  // Variable and CV to know when the event loop stops running
   std::atomic_bool to_exit = {false}; // Signal to exit
   std::atomic_bool exited = {false}; // Event thread exited
   std::mutex exit_waiter_lock;
   std::condition_variable exit_waiter;
 
-  std::thread event_loop_thread;
-
+  // Maps of each Command, fetchable by the unique ID number
   std::unordered_map<long, Command<redisReply*>*> commands_redis_reply;
   std::unordered_map<long, Command<std::string>*> commands_string_r;
   std::unordered_map<long, Command<char*>*> commands_char_p;
   std::unordered_map<long, Command<int>*> commands_int;
   std::unordered_map<long, Command<long long int>*> commands_long_long_int;
   std::unordered_map<long, Command<std::nullptr_t>*> commands_null;
-  std::mutex command_map_guard;
+  std::mutex command_map_guard; // Guards access to all of the above
+
+  // Return the correct map from the above, based on the template specialization
+  template<class ReplyT>
+  std::unordered_map<long, Command<ReplyT>*>& get_command_map();
+
+  // Return the given Command from the relevant command map, or nullptr if not there
+  template<class ReplyT>
+  Command<ReplyT>* find_command(long id);
 
   std::queue<long> command_queue;
   std::mutex queue_guard;
@@ -130,7 +211,20 @@ private:
   template<class ReplyT>
   bool process_queued_command(long id);
 
-  void run_blocking();
+  void run_event_loop();
+
+  // Callbacks invoked on server connection/disconnection
+  static void connected(const redisAsyncContext *c, int status);
+  static void disconnected(const redisAsyncContext *c, int status);
+
+  template<class ReplyT>
+  static void command_callback(redisAsyncContext *ctx, void *r, void *privdata);
+
+  template<class ReplyT>
+  static bool submit_to_server(Command<ReplyT>* c);
+
+  template<class ReplyT>
+  static void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
 };
 
 // ---------------------------
@@ -162,20 +256,6 @@ Command<ReplyT>* Redox::command(
 //  std::cout << "[DEBUG] Created Command " << c->id << " at " << c << std::endl;
 
   return c;
-}
-
-template<class ReplyT>
-bool Redox::cancel(Command<ReplyT>* c) {
-
-  if(c == nullptr) {
-    std::cerr << "[ERROR] Canceling null command." << std::endl;
-    return false;
-  }
-
-//  std::cout << "[INFO] Canceling command " << c->id << " at " << c << std::endl;
-  c->completed = true;
-
-  return true;
 }
 
 template<class ReplyT>

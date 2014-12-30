@@ -26,6 +26,7 @@ void Redox::connected(const redisAsyncContext *ctx, int status) {
 }
 
 void Redox::disconnected(const redisAsyncContext *ctx, int status) {
+
   if (status != REDIS_OK) {
     cerr << "[ERROR] Disconnecting from Redis: " << ctx->errstr << endl;
     return;
@@ -43,24 +44,29 @@ void Redox::disconnected(const redisAsyncContext *ctx, int status) {
 Redox::Redox(const string& host, const int port)
     : host(host), port(port) {
 
-  lock_guard<mutex> lg(queue_guard);
-
+  // Required by libev
   signal(SIGPIPE, SIG_IGN);
 
+  // Create a redisAsyncContext
   ctx = redisAsyncConnect(host.c_str(), port);
   if (ctx->err) {
     printf("Error: %s\n", ctx->errstr);
     return;
   }
 
+  // Create a new event loop and attach it to hiredis
   evloop = ev_loop_new(EVFLAG_AUTO);
-  ev_set_userdata(evloop, (void*)this);
-
   redisLibevAttach(evloop, ctx);
+
+  // Set the callbacks to be invoked on server connection/disconnection
   redisAsyncSetConnectCallback(ctx, Redox::connected);
   redisAsyncSetDisconnectCallback(ctx, Redox::disconnected);
 
+  // Set back references to this Redox object (for use in callbacks)
+  ev_set_userdata(evloop, (void*)this);
   ctx->data = (void*)this;
+
+  // Lock this mutex until the connected callback is invoked
   connected_lock.lock();
 }
 
@@ -79,7 +85,7 @@ Redox::~Redox() {
             << " Commands and freed " << commands_deleted << "." << std::endl;
 }
 
-void Redox::run_blocking() {
+void Redox::run_event_loop() {
 
   // Events to connect to Redox
   ev_run(evloop, EVRUN_NOWAIT);
@@ -118,9 +124,9 @@ void Redox::run_blocking() {
   cout << "[INFO] Event thread exited." << endl;
 }
 
-void Redox::run() {
+void Redox::start() {
 
-  event_loop_thread = thread([this] { run_blocking(); });
+  event_loop_thread = thread([this] { run_event_loop(); });
 
   // Block until connected and running the event loop
   unique_lock<mutex> ul(running_waiter_lock);
@@ -153,7 +159,7 @@ Command<ReplyT>* Redox::find_command(long id) {
 }
 
 template<class ReplyT>
-void command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
+void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
   Redox* rdx = (Redox*) ctx->data;
   long id = (long)privdata;
@@ -170,7 +176,7 @@ void command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
   c->process_reply();
 
   // Increment the Redox object command counter
-  rdx->incr_cmd_count();
+  rdx->cmd_count++;
 }
 
 /**
@@ -178,7 +184,7 @@ void command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 * true if succeeded, false otherwise.
 */
 template<class ReplyT>
-bool submit_to_server(Command<ReplyT>* c) {
+bool Redox::submit_to_server(Command<ReplyT>* c) {
   c->pending++;
   if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
     cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
@@ -189,7 +195,7 @@ bool submit_to_server(Command<ReplyT>* c) {
 }
 
 template<class ReplyT>
-void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents) {
+void Redox::submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents) {
 
   Redox* rdx = (Redox*) ev_userdata(loop);
   long id = (long)timer->data;
@@ -201,7 +207,7 @@ void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents)
     return;
   }
 
-  if(c->is_completed()) {
+  if(c->is_canceled()) {
 
 //    cout << "[INFO] Command " << c << " is completed, stopping event timer." << endl;
 
@@ -227,10 +233,10 @@ bool Redox::process_queued_command(long id) {
 
   if((c->repeat == 0) && (c->after == 0)) {
     submit_to_server<ReplyT>(c);
+
   } else {
 
     c->timer.data = (void*)c->id;
-
     ev_timer_init(&c->timer, submit_command_callback<ReplyT>, c->after, c->repeat);
     ev_timer_start(evloop, &c->timer);
 
@@ -318,6 +324,10 @@ string Redox::get(const string& key) {
 bool Redox::set(const std::string& key, const std::string& value) {
 
   return command_blocking("SET " + key + " " + value);
+}
+
+bool Redox::del(const std::string& key) {
+  return command_blocking("DEL " + key);
 }
 
 } // End namespace redis

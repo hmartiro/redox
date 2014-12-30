@@ -65,7 +65,9 @@ public:
   const ReplyT& reply();
   int status() { return reply_status; };
   bool ok() { return reply_status == REDOX_OK; }
-  bool is_completed() { return completed; }
+  bool is_canceled() { return canceled; }
+
+  void cancel() { canceled = true; }
 
   /**
   * Called by the user to free the redisReply object, when the free_memory
@@ -92,7 +94,7 @@ private:
   ReplyT reply_val;
   int reply_status;
 
-  std::atomic_bool completed = {false};
+  std::atomic_bool canceled = {false};
 
   ev_timer timer;
   std::mutex timer_guard;
@@ -139,18 +141,6 @@ void Command<ReplyT>::process_reply() {
   }
 
   free_reply_object();
-
-//  // Free memory when all pending callbacks are received
-//  if((repeat != 0) && (pending == 0) && ((long)(get_timer()->data) == 0)) {
-//    std::cout << "Freeing command, timer stopped and pending is 0." << std::endl;
-//    free_command(this);
-//  }
-//
-//  if((pending == 0) && (repeat == 0)) {
-//    free_command(this);
-//  } else {
-//    free_guard.unlock();
-//  }
 
   // Handle memory if all pending replies have arrived
   if(pending == 0) {

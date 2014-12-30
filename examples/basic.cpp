@@ -9,13 +9,13 @@ using namespace std;
 
 int main(int argc, char* argv[]) {
 
-  redox::Redox rdx = {"localhost", 6379};
-  rdx.run();
+  redox::Redox rdx; // Initialize Redox (default host/port)
+  rdx.start(); // Start the event loop
 
-  if(!rdx.set("alaska", "rules"))
+  if(!rdx.set("alaska", "rules")) // Set a key, check if succeeded
     cerr << "Failed to set key!" << endl;
 
-  cout << "alaska: " << rdx.get("alaska") << endl;
+  cout << "key = alaska, value = " << rdx.get("alaska") << endl;
 
-  rdx.stop();
+  rdx.stop(); // Shut down the event loop
 }

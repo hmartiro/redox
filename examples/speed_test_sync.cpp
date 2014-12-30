@@ -18,7 +18,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
-  rdx.run();
+  rdx.start();
 
   if(rdx.command_blocking("SET simple_loop:count 0")) {
     cout << "Reset the counter to zero." << endl;
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
 
   while(time_s() < t_end) {
     Command<int>* c = rdx.command_blocking<int>(cmd_str);
-    if(c->status() != REDOX_OK) cerr << "Bad reply, code: " << c->status() << endl;
+    if(!c->ok()) cerr << "Bad reply, code: " << c->status() << endl;
     c->free();
     count++;
   }
