@@ -29,8 +29,8 @@ set(LIB_ALL ${LIB_REDIS})
 # Examples
 # ---------------------------------------------------------
 
-#add_executable(basic examples/basic.cpp ${SRC_ALL})
-#target_link_libraries(basic ${LIB_REDIS})
+add_executable(basic examples/basic.cpp ${SRC_ALL})
+target_link_libraries(basic ${LIB_REDIS})
 
 #add_executable(progressive examples/progressive.cpp ${SRC_ALL})
 #target_link_libraries(progressive ${LIB_REDIS})

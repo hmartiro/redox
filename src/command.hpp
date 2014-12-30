@@ -74,6 +74,13 @@ public:
 
   void process_reply();
 
+  ev_timer* get_timer() {
+    std::lock_guard<std::mutex> lg(timer_guard);
+    return &timer;
+  }
+
+  static void free_command(Command<ReplyT>* c);
+
 private:
 
   const std::function<void(const std::string&, const ReplyT&)> callback;
@@ -89,16 +96,11 @@ private:
   ev_timer timer;
   std::mutex timer_guard;
 
-  ev_timer* get_timer() {
-    std::lock_guard<std::mutex> lg(timer_guard);
-    return &timer;
-  }
 
   // Make sure we don't free resources until details taken care of
   std::mutex free_guard;
 
   void free_reply_object();
-  static void free_command(Command<ReplyT>* c);
 
   void invoke_callback();
   bool is_error_reply();
@@ -122,11 +124,6 @@ Command<ReplyT>::Command(
 template<class ReplyT>
 void Command<ReplyT>::process_reply() {
 
-  if(cmd == "GET simple_loop:count") {
-    std::cout << "In process_reply, cmd = " << cmd << ", reply_obj = " << reply_obj << std::endl;
-    std::cout << "reply int: " << reply_obj->integer << std::endl;
-    std::cout << "reply str: " << reply_obj->str << std::endl;
-  }
   free_guard.lock();
 
   invoke_callback();
@@ -134,20 +131,44 @@ void Command<ReplyT>::process_reply() {
   pending--;
 
   if(!free_memory) {
-    std::cout << "Command memory not being freed, free_memory = " << free_memory << std::endl;
     // Allow free() method to free memory
+//    std::cout << "Command memory not being freed, free_memory = " << free_memory << std::endl;
     free_guard.unlock();
     return;
   }
 
-
   free_reply_object();
 
-  if((pending == 0) && (repeat == 0)) {
-    free_command(this);
-  } else {
-    free_guard.unlock();
+//  // Free memory when all pending callbacks are received
+//  if((repeat != 0) && (pending == 0) && ((long)(get_timer()->data) == 0)) {
+//    std::cout << "Freeing command, timer stopped and pending is 0." << std::endl;
+//    free_command(this);
+//  }
+//
+//  if((pending == 0) && (repeat == 0)) {
+//    free_command(this);
+//  } else {
+//    free_guard.unlock();
+//  }
+
+  // Handle memory if all pending replies have arrived
+  if(pending == 0) {
+
+    // Just free non-repeating commands
+    if (repeat == 0) {
+      free_command(this);
+      return;
+
+    // Free repeating commands if timer is stopped
+    } else {
+      if((long)(get_timer()->data) == 0) {
+        free_command(this);
+        return;
+      }
+    }
   }
+
+  free_guard.unlock();
 }
 
 template<class ReplyT>
@@ -174,9 +195,8 @@ void Command<ReplyT>::free_reply_object() {
 
 template<class ReplyT>
 void Command<ReplyT>::free_command(Command<ReplyT>* c) {
-  c->rdx->commands_deleted += 1;
   c->rdx->template remove_active_command<ReplyT>(c->id);
-//  std::cout << "[INFO] Deleted Command " << c->rdx->commands_created << " at " << c << std::endl;
+//  std::cout << "[INFO] Deleted Command " << c->id << " at " << c << std::endl;
   delete c;
 }
 

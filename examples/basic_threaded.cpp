@@ -20,6 +20,7 @@ int main(int argc, char* argv[]) {
       rdx.command<int>("INCR counter");
       this_thread::sleep_for(chrono::milliseconds(1));
     }
+    cout << "Setter thread exiting." << endl;
   });
 
   thread getter([]() {
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
       );
       this_thread::sleep_for(chrono::milliseconds(1000));
     }
+    cout << "Getter thread exiting." << endl;
   });
 
   setter.join();
