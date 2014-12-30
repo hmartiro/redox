@@ -88,6 +88,9 @@ void Redox::run_blocking() {
   connected_lock.lock();
   connected_lock.unlock();
 
+  running = true;
+  running_waiter.notify_one();
+
   // Continuously create events and handle them
   while (!to_exit) {
     process_queued_commands();
@@ -107,6 +110,7 @@ void Redox::run_blocking() {
   }
 
   exited = true;
+  running = false;
 
   // Let go for block_until_stopped method
   exit_waiter.notify_one();
@@ -118,8 +122,9 @@ void Redox::run() {
 
   event_loop_thread = thread([this] { run_blocking(); });
 
-  // Don't return until connected
-  lock_guard<mutex> lg(connected_lock);
+  // Block until connected and running the event loop
+  unique_lock<mutex> ul(running_waiter_lock);
+  running_waiter.wait(ul, [this] { return running.load(); });
 }
 
 void Redox::stop_signal() {
@@ -297,6 +302,22 @@ bool Redox::command_blocking(const string& cmd) {
   bool succeeded = (c->status() == REDOX_OK);
   c->free();
   return succeeded;
+}
+
+string Redox::get(const string& key) {
+
+  auto c = command_blocking<char*>("GET " + key);
+  if(!c->ok()) {
+    throw runtime_error("[FATAL] Error getting key " + key + ": " + to_string(c->status()));
+  }
+  string reply = c->reply();
+  c->free();
+  return reply;
+};
+
+bool Redox::set(const std::string& key, const std::string& value) {
+
+  return command_blocking("SET " + key + " " + value);
 }
 
 } // End namespace redis

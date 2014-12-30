@@ -41,11 +41,11 @@ target_link_libraries(basic_threaded ${LIB_REDIS})
 #add_executable(lpush_benchmark examples/lpush_benchmark.cpp ${SRC_ALL})
 #target_link_libraries(lpush_benchmark ${LIB_REDIS})
 
-add_executable(speed_test_async examples/speed_test_async.cpp ${SRC_ALL})
-target_link_libraries(speed_test_async ${LIB_REDIS})
+#add_executable(speed_test_async examples/speed_test_async.cpp ${SRC_ALL})
+#target_link_libraries(speed_test_async ${LIB_REDIS})
 
-add_executable(speed_test_sync examples/speed_test_sync.cpp ${SRC_ALL})
-target_link_libraries(speed_test_sync ${LIB_REDIS})
+#add_executable(speed_test_sync examples/speed_test_sync.cpp ${SRC_ALL})
+#target_link_libraries(speed_test_sync ${LIB_REDIS})
 
 add_executable(speed_test_async_multi examples/speed_test_async_multi.cpp ${SRC_ALL})
 target_link_libraries(speed_test_async_multi ${LIB_REDIS})

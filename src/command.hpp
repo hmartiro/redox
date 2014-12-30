@@ -64,6 +64,7 @@ public:
 
   const ReplyT& reply();
   int status() { return reply_status; };
+  bool ok() { return reply_status == REDOX_OK; }
   bool is_completed() { return completed; }
 
   /**
@@ -212,7 +213,7 @@ void Command<ReplyT>::free() {
 
 template<class ReplyT>
 const ReplyT& Command<ReplyT>::reply() {
-  if(reply_status != REDOX_OK) {
+  if(!ok()) {
     std::cout << "[WARNING] " << cmd
               << ": Accessing value of reply with status != OK." << std::endl;
   }

@@ -10,14 +10,12 @@ using namespace std;
 int main(int argc, char* argv[]) {
 
   redox::Redox rdx = {"localhost", 6379};
+  rdx.run();
 
-  rdx.command<string>("SET alaska rules!", [](const string &cmd, const string &value) {
-    cout << cmd << ": " << value << endl;
-  });
+  if(!rdx.set("alaska", "rules"))
+    cerr << "Failed to set key!" << endl;
 
-  rdx.command<string>("GET alaska", [](const string &cmd, const string &value) {
-    cout << cmd << ": " << value << endl;
-  });
+  cout << "alaska: " << rdx.get("alaska") << endl;
 
-  rdx.run_blocking();
+  rdx.stop();
 }

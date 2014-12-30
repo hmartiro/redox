@@ -35,7 +35,6 @@ public:
   redisAsyncContext *ctx;
 
   void run();
-  void run_blocking();
 
   void stop_signal();
   void block();
@@ -86,6 +85,10 @@ public:
   template<class ReplyT>
   std::unordered_map<long, Command<ReplyT>*>& get_command_map();
 
+  // Helpers
+  std::string get(const std::string& key);
+  bool set(const std::string& key, const std::string& value);
+
 private:
 
   // Redox server
@@ -100,6 +103,10 @@ private:
 
   // Number of commands processed
   std::atomic_long cmd_count = {0};
+
+  std::atomic_bool running = {false};
+  std::mutex running_waiter_lock;
+  std::condition_variable running_waiter;
 
   std::atomic_bool to_exit = {false}; // Signal to exit
   std::atomic_bool exited = {false}; // Event thread exited
@@ -122,6 +129,8 @@ private:
 
   template<class ReplyT>
   bool process_queued_command(long id);
+
+  void run_blocking();
 };
 
 // ---------------------------
@@ -135,6 +144,10 @@ Command<ReplyT>* Redox::command(
   double after,
   bool free_memory
 ) {
+
+  if(!running) {
+    throw std::runtime_error("[ERROR] Need to start Redox before running commands!");
+  }
 
   commands_created += 1;
   auto* c = new Command<ReplyT>(this, commands_created, cmd,
