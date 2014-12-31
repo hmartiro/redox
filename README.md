@@ -15,6 +15,7 @@ high-performance applications. It is built on top of [hiredis](https://github.co
    so they can capture state - lambdas, member functions, bind expressions
  * Thread-safe - use one Redox object in multiple threads or multiple Redox objects in one thread
  * Automatic pipelining, even for synchronous calls from separate threads
+ * Small, < 1k SLOC
  * Access to low-level reply objects when needed
  * 100% clean Valgrind reports
 
