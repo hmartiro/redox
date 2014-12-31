@@ -194,6 +194,7 @@ private:
   std::unordered_map<long, Command<int>*> commands_int;
   std::unordered_map<long, Command<long long int>*> commands_long_long_int;
   std::unordered_map<long, Command<std::nullptr_t>*> commands_null;
+  std::unordered_map<long, Command<std::vector<std::string>>*> commands_vector_string;
   std::mutex command_map_guard; // Guards access to all of the above
 
   // Return the correct map from the above, based on the template specialization
@@ -272,7 +273,6 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
   Command<ReplyT>* c = command<ReplyT>(cmd,
     [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
       std::unique_lock<std::mutex> ul(m);
-
       val = reply;
       status = REDOX_OK;
       ul.unlock();

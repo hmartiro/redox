@@ -112,7 +112,7 @@ void Redox::run_event_loop() {
 
   if(commands_created != commands_deleted) {
     cerr << "[ERROR] All commands were not freed! "
-         << commands_created << "/" << commands_deleted << endl;
+         << commands_deleted << "/" << commands_created << endl;
   }
 
   exited = true;
@@ -261,6 +261,7 @@ void Redox::process_queued_commands() {
     else if(process_queued_command<int>(id)) {}
     else if(process_queued_command<long long int>(id)) {}
     else if(process_queued_command<nullptr_t>(id)) {}
+    else if(process_queued_command<vector<string>>(id)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
   }
 }
@@ -295,6 +296,9 @@ Redox::get_command_map<long long int>() {
 template<> unordered_map<long, Command<nullptr_t>*>&
 Redox::get_command_map<nullptr_t>() { return commands_null; }
 
+template<> unordered_map<long, Command<vector<string>>*>&
+Redox::get_command_map<vector<string>>() { return commands_vector_string; }
+
 // ----------------------------
 // Helpers
 // ----------------------------
@@ -314,7 +318,7 @@ string Redox::get(const string& key) {
 
   auto c = command_blocking<char*>("GET " + key);
   if(!c->ok()) {
-    throw runtime_error("[FATAL] Error getting key " + key + ": " + to_string(c->status()));
+    throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c->status()));
   }
   string reply = c->reply();
   c->free();
@@ -322,7 +326,6 @@ string Redox::get(const string& key) {
 };
 
 bool Redox::set(const std::string& key, const std::string& value) {
-
   return command_blocking("SET " + key + " " + value);
 }
 

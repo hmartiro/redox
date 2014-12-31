@@ -2,6 +2,9 @@
 * Redis C++11 wrapper.
 */
 
+#include <vector>
+#include <assert.h>
+
 #include "command.hpp"
 
 namespace redox {
@@ -103,6 +106,31 @@ void Command<std::nullptr_t>::invoke_callback() {
 
   } else {
     invoke(nullptr);
+  }
+}
+
+
+template<>
+void Command<std::vector<std::string>>::invoke_callback() {
+
+  if(is_error_reply()) invoke_error(REDOX_ERROR_REPLY);
+
+  else if(reply_obj->type != REDIS_REPLY_ARRAY) {
+    std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+    invoke_error(REDOX_WRONG_TYPE);
+
+  } else {
+    std::vector<std::string> v;
+    size_t count = reply_obj->elements;
+    for(size_t i = 0; i < count; i++) {
+      redisReply* r = *(reply_obj->element + i);
+      if(r->type != REDIS_REPLY_STRING) {
+        std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+        invoke_error(REDOX_WRONG_TYPE);
+      }
+      v.push_back(r->str);
+    }
+    invoke(v);
   }
 }
 

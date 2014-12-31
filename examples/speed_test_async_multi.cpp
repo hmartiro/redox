@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
   Redox rdx = {"localhost", 6379};
   rdx.start();
 
-  if(rdx.command_blocking("SET simple_loop:count 0")) {
+  if(rdx.set("simple_loop:count", "0")) {
     cout << "Reset the counter to zero." << endl;
   } else {
     cerr << "Failed to reset counter." << endl;
@@ -55,9 +55,7 @@ int main(int argc, char* argv[]) {
   for(auto c : commands) c->cancel();
 
   // Get the final value of the counter
-  auto get_cmd = rdx.command_blocking<string>("GET simple_loop:count");
-  long final_count = stol(get_cmd->reply());
-  get_cmd->free();
+  long final_count = stol(rdx.get("simple_loop:count"));
 
   rdx.stop();
 
