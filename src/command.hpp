@@ -26,14 +26,9 @@ static const int REDOX_TIMEOUT = 5;
 class Redox;
 
 template<class ReplyT>
-void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
-
-template<class ReplyT>
 class Command {
 
 friend class Redox;
-
-friend void submit_command_callback<ReplyT>(struct ev_loop* loop, ev_timer* timer, int revents);
 
 public:
   Command(
