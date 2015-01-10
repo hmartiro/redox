@@ -21,13 +21,12 @@ high-performance applications. It is built on top of [hiredis](https://github.co
 
 ## Performance Benchmarks
 Benchmarks are given by averaging the results of five trials of various programs
-in `examples/`. The test machine is a Samsung Series 9 with Ubuntu 14.04 (64-bit),
-Intel i5-3317U @ 1.70GHz x 4, 7.5 GiB RAM, 120 GB SSD. During these tests, Redox
-communicated with a local Redis server over TCP.
+in `examples/`. The results are on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
+During these tests, Redox communicated with a local Redis server over TCP.
 
- * Blocking command in a loop (`speed_test_sync`): **36,250 commands/s**
- * One repeating asynchronous command (`speed_test_async`): **158,849 commands/s**
- * 100 repeating asynchronous commands (`speed_test_async_multi`): **608,032 commands/s**
+ * 100 repeating asynchronous commands (`speed_test_async_multi`): **710,014 commands/s**
+ * One repeating asynchronous command (`speed_test_async`): **195,159 commands/s**
+ * One blocking command in a loop (`speed_test_sync`): **23,609 commands/s**
 
 ## Tutorial
 Coming soon. For now, look at the example programs located in `examples/`, and the snippets
