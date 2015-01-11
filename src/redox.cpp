@@ -139,6 +139,7 @@ void Redox::start() {
 
 void Redox::stop_signal() {
   to_exit = true;
+  ev_break(evloop, EVBREAK_ALL);
 }
 
 void Redox::block() {
