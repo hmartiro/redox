@@ -187,6 +187,10 @@ private:
   std::mutex exit_waiter_lock;
   std::condition_variable exit_waiter;
 
+  // Condition variable to check the event loop
+  std::condition_variable loop_waiter;
+  std::mutex loop_waiter_lock;
+
   // Maps of each Command, fetchable by the unique ID number
   std::unordered_map<long, Command<redisReply*>*> commands_redis_reply;
   std::unordered_map<long, Command<std::string>*> commands_string_r;

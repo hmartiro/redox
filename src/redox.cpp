@@ -101,6 +101,10 @@ void Redox::run_event_loop() {
   while (!to_exit) {
     process_queued_commands();
     ev_run(evloop, EVRUN_NOWAIT);
+
+    // Wait until notified, or check every 100 milliseconds
+    unique_lock<mutex> ul(loop_waiter_lock);
+    loop_waiter.wait_for(ul, chrono::milliseconds(100));
   }
 
   cout << "[INFO] Stop signal detected." << endl;
@@ -177,6 +181,9 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
   // Increment the Redox object command counter
   rdx->cmd_count++;
+
+  // Notify to check the event loop
+  rdx->loop_waiter.notify_one();
 }
 
 /**
@@ -191,6 +198,10 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
     c->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
+
+  // Notify to check the event loop
+  c->rdx->loop_waiter.notify_one();
+
   return true;
 }
 
