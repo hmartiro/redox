@@ -94,17 +94,17 @@ void Redox::run_event_loop() {
   connected_lock.lock();
   connected_lock.unlock();
 
+  // Set up asynchronous watcher which we signal every
+  // time we add a command
+  ev_async_init(&async_w, process_queued_commands);
+  ev_async_start(evloop, &async_w);
+
   running = true;
   running_waiter.notify_one();
 
-  // Continuously create events and handle them
+  // Run the event loop
   while (!to_exit) {
-    process_queued_commands();
     ev_run(evloop, EVRUN_NOWAIT);
-
-    // Wait until notified, or check every 100 milliseconds
-    unique_lock<mutex> ul(loop_waiter_lock);
-    loop_waiter.wait_for(ul, chrono::milliseconds(100));
   }
 
   cout << "[INFO] Stop signal detected." << endl;
@@ -181,9 +181,6 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
   // Increment the Redox object command counter
   rdx->cmd_count++;
-
-  // Notify to check the event loop
-  rdx->loop_waiter.notify_one();
 }
 
 /**
@@ -198,9 +195,6 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
     c->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
-
-  // Notify to check the event loop
-  c->rdx->loop_waiter.notify_one();
 
   return true;
 }
@@ -257,22 +251,24 @@ bool Redox::process_queued_command(long id) {
   return true;
 }
 
-void Redox::process_queued_commands() {
+void Redox::process_queued_commands(struct ev_loop* loop, ev_async* async, int revents) {
 
-  lock_guard<mutex> lg(queue_guard);
+  Redox* rdx = (Redox*) ev_userdata(loop);
 
-  while(!command_queue.empty()) {
+  lock_guard<mutex> lg(rdx->queue_guard);
 
-    long id = command_queue.front();
-    command_queue.pop();
+  while(!rdx->command_queue.empty()) {
 
-    if(process_queued_command<redisReply*>(id)) {}
-    else if(process_queued_command<string>(id)) {}
-    else if(process_queued_command<char*>(id)) {}
-    else if(process_queued_command<int>(id)) {}
-    else if(process_queued_command<long long int>(id)) {}
-    else if(process_queued_command<nullptr_t>(id)) {}
-    else if(process_queued_command<vector<string>>(id)) {}
+    long id = rdx->command_queue.front();
+    rdx->command_queue.pop();
+
+    if(rdx->process_queued_command<redisReply*>(id)) {}
+    else if(rdx->process_queued_command<string>(id)) {}
+    else if(rdx->process_queued_command<char*>(id)) {}
+    else if(rdx->process_queued_command<int>(id)) {}
+    else if(rdx->process_queued_command<long long int>(id)) {}
+    else if(rdx->process_queued_command<nullptr_t>(id)) {}
+    else if(rdx->process_queued_command<vector<string>>(id)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
   }
 }

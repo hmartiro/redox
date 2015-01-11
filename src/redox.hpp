@@ -166,6 +166,9 @@ private:
   // Dynamically allocated libev event loop
   struct ev_loop* evloop;
 
+  // Asynchronous watcher (for processing commands)
+  ev_async async_w;
+
   // Number of commands processed
   std::atomic_long cmd_count = {0};
 
@@ -187,10 +190,6 @@ private:
   std::mutex exit_waiter_lock;
   std::condition_variable exit_waiter;
 
-  // Condition variable to check the event loop
-  std::condition_variable loop_waiter;
-  std::mutex loop_waiter_lock;
-
   // Maps of each Command, fetchable by the unique ID number
   std::unordered_map<long, Command<redisReply*>*> commands_redis_reply;
   std::unordered_map<long, Command<std::string>*> commands_string_r;
@@ -211,7 +210,7 @@ private:
 
   std::queue<long> command_queue;
   std::mutex queue_guard;
-  void process_queued_commands();
+  static void process_queued_commands(struct ev_loop* loop, ev_async* async, int revents);
 
   template<class ReplyT>
   bool process_queued_command(long id);
@@ -257,6 +256,9 @@ Command<ReplyT>* Redox::command(
 
   get_command_map<ReplyT>()[c->id] = c;
   command_queue.push(c->id);
+
+  // Signal the event loop to process this command
+  ev_async_send(evloop, &async_w);
 
 //  std::cout << "[DEBUG] Created Command " << c->id << " at " << c << std::endl;
 
