@@ -45,18 +45,14 @@ void Redox::disconnected_callback(const redisAsyncContext *ctx, int status) {
   if(rdx->user_connection_callback) rdx->user_connection_callback(rdx->connect_state);
 }
 
-Redox::Redox(
-  const string& host, const int port,
-  std::function<void(int)> connection_callback
-) : host(host), port(port), user_connection_callback(connection_callback) {
-
-  // libev setup
+void Redox::init_ev() {
   signal(SIGPIPE, SIG_IGN);
   evloop = ev_loop_new(EVFLAG_AUTO);
   ev_set_userdata(evloop, (void*)this); // Back-reference
+}
 
-  // Create a redisAsyncContext
-  ctx = redisAsyncConnect(host.c_str(), port);
+void Redox::init_hiredis() {
+
   ctx->data = (void*)this; // Back-reference
 
   if (ctx->err) {
@@ -72,6 +68,32 @@ Redox::Redox(
   // Set the callbacks to be invoked on server connection/disconnection
   redisAsyncSetConnectCallback(ctx, Redox::connected_callback);
   redisAsyncSetDisconnectCallback(ctx, Redox::disconnected_callback);
+}
+
+Redox::Redox(
+  const string& host, const int port,
+  std::function<void(int)> connection_callback
+) : host(host), port(port), user_connection_callback(connection_callback) {
+
+  init_ev();
+
+  // Connect over TCP
+  ctx = redisAsyncConnect(host.c_str(), port);
+
+  init_hiredis();
+}
+
+Redox::Redox(
+  const std::string& path,
+  std::function<void(int)> connection_callback = nullptr
+) : path(path), user_connection_callback(connection_callback) {
+
+  init_ev();
+
+  // Connect over unix sockets
+  ctx = redisAsyncConnectUnix(path.c_str());
+
+  init_hiredis();
 }
 
 void Redox::run_event_loop() {
@@ -200,8 +222,7 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
     return;
   }
 
-  c->reply_obj = reply_obj;
-  c->process_reply();
+  c->process_reply(reply_obj);
 
   // Increment the Redox object command counter
   rdx->cmd_count++;
@@ -340,7 +361,7 @@ void Redox::command(const string& cmd) {
 
 bool Redox::command_blocking(const string& cmd) {
   Command<redisReply*>* c = command_blocking<redisReply*>(cmd);
-  bool succeeded = (c->status() == REDOX_OK);
+  bool succeeded = c->ok();
   c->free();
   return succeeded;
 }

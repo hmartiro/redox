@@ -22,7 +22,8 @@ high-performance applications. It is built on top of [hiredis](https://github.co
 ## Performance Benchmarks
 Benchmarks are given by averaging the results of five trials of various programs
 in `examples/`. The results are on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
-During these tests, Redox communicated with a local Redis server over TCP.
+During these tests, Redox communicated with a local Redis server over TCP. Results are
+slightly faster using Unix sockets.
 
  * 100 repeating asynchronous commands (`speed_test_async_multi`): **710,014 commands/s**
  * One repeating asynchronous command (`speed_test_async`): **195,159 commands/s**

@@ -70,7 +70,7 @@ public:
   */
   void free();
 
-  void process_reply();
+  void process_reply(redisReply* r);
 
   ev_timer* get_timer() {
     std::lock_guard<std::mutex> lg(timer_guard);
@@ -93,7 +93,6 @@ private:
 
   ev_timer timer;
   std::mutex timer_guard;
-
 
   // Make sure we don't free resources until details taken care of
   std::mutex free_guard;
@@ -120,10 +119,11 @@ Command<ReplyT>::Command(
 }
 
 template<class ReplyT>
-void Command<ReplyT>::process_reply() {
+void Command<ReplyT>::process_reply(redisReply* r) {
 
   free_guard.lock();
 
+  reply_obj = r;
   invoke_callback();
 
   pending--;

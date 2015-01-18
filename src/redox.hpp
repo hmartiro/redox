@@ -48,6 +48,14 @@ public:
     const int port = REDIS_DEFAULT_PORT,
     std::function<void(int)> connection_callback = nullptr
   );
+
+  /**
+  * Initialize everything, connect over unix sockets to a Redis server.
+  */
+  Redox(
+    const std::string& path,
+    std::function<void(int)> connection_callback
+  );
   ~Redox();
 
   /**
@@ -173,9 +181,16 @@ public:
 
 private:
 
-  // Redox server
+  // Redox server over TCP
   std::string host;
   int port;
+
+  // Redox server over unix
+  std::string path;
+
+  // Setup code for the constructors
+  void init_ev();
+  void init_hiredis();
 
   // Manage connection state
   std::atomic_int connect_state = {REDOX_NOT_YET_CONNECTED};
@@ -315,9 +330,7 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
     0, 0, false // No repeats, don't free memory
   );
 
-  // Wait until a callback is invoked
   cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
-
   c->reply_val = val;
   c->reply_status = status;
 
