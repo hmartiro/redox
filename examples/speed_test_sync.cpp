@@ -18,7 +18,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
-  rdx.start();
+  if(!rdx.start()) return 1;
 
   if(rdx.command_blocking("SET simple_loop:count 0")) {
     cout << "Reset the counter to zero." << endl;

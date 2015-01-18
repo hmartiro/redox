@@ -9,7 +9,7 @@ using namespace std;
 
 int main(int argc, char* argv[]) {
 
-  redox::Redox rdx = {"localhost", 6379}; // Initialize Redox
+  redox::Redox rdx = {"localhost", 6379, [](int state) { cout << "Connection state: " << state << endl; }}; // Initialize Redox
   if(!rdx.start()) return 1; // Start the event loop
 
   rdx.del("occupation");

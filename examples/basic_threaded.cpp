@@ -13,7 +13,7 @@ redox::Redox rdx = {"localhost", 6379};
 
 int main(int argc, char* argv[]) {
 
-  rdx.start();
+  if(!rdx.start()) return 1;
 
   thread setter([]() {
     for(int i = 0; i < 5000; i++) {

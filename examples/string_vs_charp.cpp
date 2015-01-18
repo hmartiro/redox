@@ -18,7 +18,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx;
-  rdx.start();
+  if(!rdx.start()) return 1;
 
   rdx.del("stringtest");
   rdx.set("stringtest", "value");

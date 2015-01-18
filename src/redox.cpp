@@ -16,19 +16,16 @@ void Redox::connected_callback(const redisAsyncContext *ctx, int status) {
   if (status != REDIS_OK) {
     cerr << "[ERROR] Connecting to Redis: " << ctx->errstr << endl;
     rdx->connect_state = REDOX_CONNECT_ERROR;
-    rdx->connect_waiter.notify_all();
-    return;
+
+  } else {
+    // Disable hiredis automatically freeing reply objects
+    ctx->c.reader->fn->freeObject = [](void *reply) {};
+    rdx->connect_state = REDOX_CONNECTED;
+    cout << "[INFO] Connected to Redis." << endl;
   }
 
-  // Disable hiredis automatically freeing reply objects
-  ctx->c.reader->fn->freeObject = [](void* reply) {};
-
-  rdx->connect_state = REDOX_CONNECTED;
   rdx->connect_waiter.notify_all();
-
-  cout << "[INFO] Connected to Redis." << endl;
-
-  if(rdx->user_connect_callback) rdx->user_connect_callback();
+  if(rdx->user_connection_callback) rdx->user_connection_callback(rdx->connect_state);
 }
 
 void Redox::disconnected_callback(const redisAsyncContext *ctx, int status) {
@@ -45,37 +42,36 @@ void Redox::disconnected_callback(const redisAsyncContext *ctx, int status) {
 
   rdx->stop_signal();
   rdx->connect_waiter.notify_all();
-
-  if(rdx->user_disconnect_callback) rdx->user_disconnect_callback();
+  if(rdx->user_connection_callback) rdx->user_connection_callback(rdx->connect_state);
 }
 
 Redox::Redox(
   const string& host, const int port,
-  std::function<void(void)> connected,
-  std::function<void(void)> disconnected
-) : host(host), port(port), user_connect_callback(connected), user_disconnect_callback(disconnected) {
+  std::function<void(int)> connection_callback
+) : host(host), port(port), user_connection_callback(connection_callback) {
 
-  // Required by libev
+  // libev setup
   signal(SIGPIPE, SIG_IGN);
+  evloop = ev_loop_new(EVFLAG_AUTO);
+  ev_set_userdata(evloop, (void*)this); // Back-reference
 
   // Create a redisAsyncContext
   ctx = redisAsyncConnect(host.c_str(), port);
+  ctx->data = (void*)this; // Back-reference
+
   if (ctx->err) {
-    printf("Error: %s\n", ctx->errstr);
+    cout << "[ERROR] Could not create a hiredis context: " << ctx->errstr << endl;
+    connect_state = REDOX_CONNECT_ERROR;
+    connect_waiter.notify_all();
     return;
   }
 
-  // Create a new event loop and attach it to hiredis
-  evloop = ev_loop_new(EVFLAG_AUTO);
+  // Attach event loop to hiredis
   redisLibevAttach(evloop, ctx);
 
   // Set the callbacks to be invoked on server connection/disconnection
   redisAsyncSetConnectCallback(ctx, Redox::connected_callback);
   redisAsyncSetDisconnectCallback(ctx, Redox::disconnected_callback);
-
-  // Set back references to this Redox object (for use in callbacks)
-  ev_set_userdata(evloop, (void*)this);
-  ctx->data = (void*)this;
 }
 
 void Redox::run_event_loop() {

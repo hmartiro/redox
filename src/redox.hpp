@@ -46,8 +46,7 @@ public:
   Redox(
     const std::string& host = REDIS_DEFAULT_HOST,
     const int port = REDIS_DEFAULT_PORT,
-    std::function<void(void)> connected = nullptr,
-    std::function<void(void)> disconnected = nullptr
+    std::function<void(int)> connection_callback = nullptr
   );
   ~Redox();
 
@@ -184,8 +183,7 @@ private:
   std::condition_variable connect_waiter;
 
   // User connect/disconnect callbacks
-  std::function<void(void)> user_connect_callback;
-  std::function<void(void)> user_disconnect_callback;
+  std::function<void(int)> user_connection_callback;
 
   // Dynamically allocated libev event loop
   struct ev_loop* evloop;
