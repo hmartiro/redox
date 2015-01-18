@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(redox)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -O3")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -g  -fno-omit-frame-pointer")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall -g  -fno-omit-frame-pointer")
 # set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # ---------------------------------------------------------
@@ -52,3 +52,6 @@ target_link_libraries(speed_test_sync ${LIB_REDIS})
 
 #add_executable(string_v_char examples/string_vs_charp.cpp ${SRC_ALL})
 #target_link_libraries(string_v_char ${LIB_REDIS})
+
+add_executable(multi_client examples/multi-client.cpp ${SRC_ALL})
+target_link_libraries(multi_client ${LIB_REDIS})

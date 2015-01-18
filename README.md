@@ -28,6 +28,22 @@ During these tests, Redox communicated with a local Redis server over TCP.
  * One repeating asynchronous command (`speed_test_async`): **195,159 commands/s**
  * One blocking command in a loop (`speed_test_sync`): **23,609 commands/s**
 
+## Build from source
+Instructions provided are for Ubuntu, but Redox is fully platform-independent.
+
+Get the build environment:
+
+    sudo apt-get install git cmake build-essential
+
+Get the dependencies:
+
+    sudo apt-get install libhiredis-dev libev-dev
+
+Build Redox and examples using CMake (a helper script is provided):
+
+    cd redox
+    ./make.sh
+
 ## Tutorial
 Coming soon. For now, look at the example programs located in `examples/`, and the snippets
 posted below.

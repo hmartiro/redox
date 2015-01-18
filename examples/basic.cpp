@@ -10,7 +10,7 @@ using namespace std;
 int main(int argc, char* argv[]) {
 
   redox::Redox rdx = {"localhost", 6379}; // Initialize Redox
-  rdx.start(); // Start the event loop
+  if(!rdx.start()) return 1; // Start the event loop
 
   rdx.del("occupation");
 

@@ -29,6 +29,13 @@ namespace redox {
 static const std::string REDIS_DEFAULT_HOST = "localhost";
 static const int REDIS_DEFAULT_PORT = 6379;
 
+// Connection status
+static const int REDOX_NOT_YET_CONNECTED = 0;
+static const int REDOX_CONNECTED = 1;
+static const int REDOX_DISCONNECTED = 2;
+static const int REDOX_CONNECT_ERROR = 3;
+static const int REDOX_DISCONNECT_ERROR = 4;
+
 class Redox {
 
 public:
@@ -36,14 +43,19 @@ public:
   /**
   * Initialize everything, connect over TCP to a Redis server.
   */
-  Redox(const std::string& host = REDIS_DEFAULT_HOST, const int port = REDIS_DEFAULT_PORT);
+  Redox(
+    const std::string& host = REDIS_DEFAULT_HOST,
+    const int port = REDIS_DEFAULT_PORT,
+    std::function<void(void)> connected = nullptr,
+    std::function<void(void)> disconnected = nullptr
+  );
   ~Redox();
 
   /**
   * Connect to Redis and start the event loop in a separate thread. Returns
-  * once everything is ready to go.
+  * true if and when everything is ready to go, or false on failure.
   */
-  void start();
+  bool start();
 
   /**
   * Signal the event loop to stop processing commands and shut down.
@@ -107,6 +119,12 @@ public:
   // Hiredis context, left public to allow low-level access
   redisAsyncContext *ctx;
 
+  /**
+  * If connected, disconnect from the Redis server. Usually not necessary to invoke
+  * manually, as it is called in the destructor.
+  */
+  void disconnect();
+
   // ------------------------------------------------
   // Wrapper methods for convenience only
   // ------------------------------------------------
@@ -160,8 +178,14 @@ private:
   std::string host;
   int port;
 
-  // Block run() until redis is connected
-  std::mutex connected_lock;
+  // Manage connection state
+  std::atomic_int connect_state = {REDOX_NOT_YET_CONNECTED};
+  std::mutex connect_lock;
+  std::condition_variable connect_waiter;
+
+  // User connect/disconnect callbacks
+  std::function<void(void)> user_connect_callback;
+  std::function<void(void)> user_disconnect_callback;
 
   // Dynamically allocated libev event loop
   struct ev_loop* evloop;
@@ -218,8 +242,8 @@ private:
   void run_event_loop();
 
   // Callbacks invoked on server connection/disconnection
-  static void connected(const redisAsyncContext *c, int status);
-  static void disconnected(const redisAsyncContext *c, int status);
+  static void connected_callback(const redisAsyncContext *c, int status);
+  static void disconnected_callback(const redisAsyncContext *c, int status);
 
   template<class ReplyT>
   static void command_callback(redisAsyncContext *ctx, void *r, void *privdata);

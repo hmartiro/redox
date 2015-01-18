@@ -9,40 +9,51 @@ using namespace std;
 
 namespace redox {
 
-void Redox::connected(const redisAsyncContext *ctx, int status) {
+void Redox::connected_callback(const redisAsyncContext *ctx, int status) {
+
+  Redox* rdx = (Redox*) ctx->data;
 
   if (status != REDIS_OK) {
     cerr << "[ERROR] Connecting to Redis: " << ctx->errstr << endl;
+    rdx->connect_state = REDOX_CONNECT_ERROR;
+    rdx->connect_waiter.notify_all();
     return;
   }
 
   // Disable hiredis automatically freeing reply objects
   ctx->c.reader->fn->freeObject = [](void* reply) {};
 
-  Redox* rdx = (Redox*) ctx->data;
-  rdx->connected_lock.unlock();
+  rdx->connect_state = REDOX_CONNECTED;
+  rdx->connect_waiter.notify_all();
 
   cout << "[INFO] Connected to Redis." << endl;
+
+  if(rdx->user_connect_callback) rdx->user_connect_callback();
 }
 
-void Redox::disconnected(const redisAsyncContext *ctx, int status) {
+void Redox::disconnected_callback(const redisAsyncContext *ctx, int status) {
+
+  Redox* rdx = (Redox*) ctx->data;
 
   if (status != REDIS_OK) {
     cerr << "[ERROR] Disconnecting from Redis: " << ctx->errstr << endl;
-    return;
+    rdx->connect_state = REDOX_DISCONNECT_ERROR;
+  } else {
+    cout << "[INFO] Disconnected from Redis as planned." << endl;
+    rdx->connect_state = REDOX_DISCONNECTED;
   }
 
-  // Re-enable hiredis automatically freeing reply objects
-  ctx->c.reader->fn->freeObject = freeReplyObject;
+  rdx->stop_signal();
+  rdx->connect_waiter.notify_all();
 
-  Redox* rdx = (Redox*) ctx->data;
-  rdx->connected_lock.unlock();
-
-  cout << "[INFO] Disconnected from Redis." << endl;
+  if(rdx->user_disconnect_callback) rdx->user_disconnect_callback();
 }
 
-Redox::Redox(const string& host, const int port)
-    : host(host), port(port) {
+Redox::Redox(
+  const string& host, const int port,
+  std::function<void(void)> connected,
+  std::function<void(void)> disconnected
+) : host(host), port(port), user_connect_callback(connected), user_disconnect_callback(disconnected) {
 
   // Required by libev
   signal(SIGPIPE, SIG_IGN);
@@ -59,30 +70,12 @@ Redox::Redox(const string& host, const int port)
   redisLibevAttach(evloop, ctx);
 
   // Set the callbacks to be invoked on server connection/disconnection
-  redisAsyncSetConnectCallback(ctx, Redox::connected);
-  redisAsyncSetDisconnectCallback(ctx, Redox::disconnected);
+  redisAsyncSetConnectCallback(ctx, Redox::connected_callback);
+  redisAsyncSetDisconnectCallback(ctx, Redox::disconnected_callback);
 
   // Set back references to this Redox object (for use in callbacks)
   ev_set_userdata(evloop, (void*)this);
   ctx->data = (void*)this;
-
-  // Lock this mutex until the connected callback is invoked
-  connected_lock.lock();
-}
-
-Redox::~Redox() {
-
-  redisAsyncDisconnect(ctx);
-
-  stop();
-
-  if(event_loop_thread.joinable())
-    event_loop_thread.join();
-
-  ev_loop_destroy(evloop);
-
-  std::cout << "[INFO] Redox created " << commands_created
-            << " Commands and freed " << commands_deleted << "." << std::endl;
 }
 
 void Redox::run_event_loop() {
@@ -90,9 +83,16 @@ void Redox::run_event_loop() {
   // Events to connect to Redox
   ev_run(evloop, EVRUN_NOWAIT);
 
-  // Block until connected to Redis
-  connected_lock.lock();
-  connected_lock.unlock();
+  // Block until connected to Redis, or error
+  unique_lock<mutex> ul(connect_lock);
+  connect_waiter.wait(ul, [this] { return connect_state != REDOX_NOT_YET_CONNECTED; });
+
+  // Handle connection error
+  if(connect_state != REDOX_CONNECTED) {
+    cout << "[INFO] Did not connect, event loop exiting." << endl;
+    running_waiter.notify_one();
+    return;
+  }
 
   // Set up asynchronous watcher which we signal every
   // time we add a command
@@ -128,13 +128,19 @@ void Redox::run_event_loop() {
   cout << "[INFO] Event thread exited." << endl;
 }
 
-void Redox::start() {
+bool Redox::start() {
 
   event_loop_thread = thread([this] { run_event_loop(); });
 
-  // Block until connected and running the event loop
+  // Block until connected and running the event loop, or until
+  // a connection error happens and the event loop exits
   unique_lock<mutex> ul(running_waiter_lock);
-  running_waiter.wait(ul, [this] { return running.load(); });
+  running_waiter.wait(ul, [this] {
+    return running.load() || connect_state == REDOX_CONNECT_ERROR;
+  });
+
+  // Return if succeeded
+  return connect_state == REDOX_CONNECTED;
 }
 
 void Redox::stop_signal() {
@@ -150,6 +156,27 @@ void Redox::block() {
 void Redox::stop() {
   stop_signal();
   block();
+}
+
+void Redox::disconnect() {
+  stop_signal();
+  if(connect_state == REDOX_CONNECTED) {
+    redisAsyncDisconnect(ctx);
+    block();
+  }
+}
+
+Redox::~Redox() {
+
+  disconnect();
+
+  if(event_loop_thread.joinable())
+    event_loop_thread.join();
+
+  ev_loop_destroy(evloop);
+
+  std::cout << "[INFO] Redox created " << commands_created
+    << " Commands and freed " << commands_deleted << "." << std::endl;
 }
 
 template<class ReplyT>
