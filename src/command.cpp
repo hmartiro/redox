@@ -3,7 +3,8 @@
 */
 
 #include <vector>
-#include <assert.h>
+#include <set>
+#include <unordered_set>
 
 #include "command.hpp"
 
@@ -129,6 +130,54 @@ void Command<std::vector<std::string>>::invoke_callback() {
         invoke_error(REDOX_WRONG_TYPE);
       }
       v.push_back(r->str);
+    }
+    invoke(v);
+  }
+}
+
+template<>
+void Command<std::unordered_set<std::string>>::invoke_callback() {
+
+  if(is_error_reply()) invoke_error(REDOX_ERROR_REPLY);
+
+  else if(reply_obj->type != REDIS_REPLY_ARRAY) {
+    std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+    invoke_error(REDOX_WRONG_TYPE);
+
+  } else {
+    std::unordered_set<std::string> v;
+    size_t count = reply_obj->elements;
+    for(size_t i = 0; i < count; i++) {
+      redisReply* r = *(reply_obj->element + i);
+      if(r->type != REDIS_REPLY_STRING) {
+        std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+        invoke_error(REDOX_WRONG_TYPE);
+      }
+      v.insert(r->str);
+    }
+    invoke(v);
+  }
+}
+
+template<>
+void Command<std::set<std::string>>::invoke_callback() {
+
+  if(is_error_reply()) invoke_error(REDOX_ERROR_REPLY);
+
+  else if(reply_obj->type != REDIS_REPLY_ARRAY) {
+    std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+    invoke_error(REDOX_WRONG_TYPE);
+
+  } else {
+    std::set<std::string> v;
+    size_t count = reply_obj->elements;
+    for(size_t i = 0; i < count; i++) {
+      redisReply* r = *(reply_obj->element + i);
+      if(r->type != REDIS_REPLY_STRING) {
+        std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
+        invoke_error(REDOX_WRONG_TYPE);
+      }
+      v.insert(r->str);
     }
     invoke(v);
   }

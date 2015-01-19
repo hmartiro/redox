@@ -1,9 +1,12 @@
 /**
-* Basic use of Redox to set and get a Redis key.
+* Test special data type templates for multi-element replies using Redox.
 */
 
 #include <iostream>
 #include "../src/redox.hpp"
+#include <set>
+#include <unordered_set>
+#include <vector>
 
 using namespace std;
 
@@ -16,15 +19,40 @@ int main(int argc, char* argv[]) {
 
   rdx.command_blocking("LPUSH mylist 1 2 3 4 5 6 7 8 9 10");
 
-  auto c = rdx.command_blocking<vector<string>>("LRANGE mylist -3 -1");
-  if(!c->ok()) cerr << "Error with LRANGE: " << c->status() << endl;
-  for(const string& s : c->reply()) cout << s << endl;
-  c->free();
+  rdx.command<vector<string>>("LRANGE mylist 0 4",
+    [](const string& cmd, const vector<string>& reply){
+      cout << "Last 5 elements as a vector: ";
+      for(const string& s : reply) cout << s << " ";
+      cout << endl;
+    },
+    [](const string& cmd, int status) {
+      cerr << "Error with LRANGE: " << status << endl;
+    }
+  );
 
-//  if(!rdx.set("apples", "are great!")) // Set a key, check if succeeded
-//    cerr << "Failed to set key!" << endl;
-//
-//  cout << "key = alaska, value = \"" << rdx.get("apples") << "\"" << endl;
+  rdx.command<unordered_set<string>>("LRANGE mylist 0 4",
+    [](const string& cmd, const unordered_set<string>& reply){
+      cout << "Last 5 elements as an unordered set: ";
+      for(const string& s : reply) cout << s << " ";
+      cout << endl;
+    },
+    [](const string& cmd, int status) {
+      cerr << "Error with LRANGE: " << status << endl;
+    }
+  );
 
-  rdx.stop(); // Shut down the event loop
+  rdx.command<set<string>>("LRANGE mylist 0 4",
+    [&rdx](const string& cmd, const set<string>& reply){
+      cout << "Last 5 elements as a set: ";
+      for(const string& s : reply) cout << s << " ";
+      cout << endl;
+      rdx.stop_signal();
+    },
+    [&rdx](const string& cmd, int status) {
+      cerr << "Error with LRANGE: " << status << endl;
+      rdx.stop_signal();
+    }
+  );
+
+  rdx.block(); // Shut down the event loop
 }

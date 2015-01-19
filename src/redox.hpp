@@ -14,6 +14,7 @@
 
 #include <string>
 #include <queue>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -235,6 +236,8 @@ private:
   std::unordered_map<long, Command<long long int>*> commands_long_long_int;
   std::unordered_map<long, Command<std::nullptr_t>*> commands_null;
   std::unordered_map<long, Command<std::vector<std::string>>*> commands_vector_string;
+  std::unordered_map<long, Command<std::set<std::string>>*> commands_set_string;
+  std::unordered_map<long, Command<std::unordered_set<std::string>>*> commands_unordered_set_string;
   std::mutex command_map_guard; // Guards access to all of the above
 
   // Return the correct map from the above, based on the template specialization

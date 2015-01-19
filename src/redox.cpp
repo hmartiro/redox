@@ -308,48 +308,48 @@ void Redox::process_queued_commands(struct ev_loop* loop, ev_async* async, int r
     rdx->command_queue.pop();
 
     if(rdx->process_queued_command<redisReply*>(id)) {}
-    else if(rdx->process_queued_command<string>(id)) {}
+    else if(rdx->process_queued_command<std::string>(id)) {}
     else if(rdx->process_queued_command<char*>(id)) {}
     else if(rdx->process_queued_command<int>(id)) {}
     else if(rdx->process_queued_command<long long int>(id)) {}
-    else if(rdx->process_queued_command<nullptr_t>(id)) {}
-    else if(rdx->process_queued_command<vector<string>>(id)) {}
+    else if(rdx->process_queued_command<std::nullptr_t>(id)) {}
+    else if(rdx->process_queued_command<std::vector<std::string>>(id)) {}
+    else if(rdx->process_queued_command<std::set<std::string>>(id)) {}
+    else if(rdx->process_queued_command<std::unordered_set<std::string>>(id)) {}
     else throw runtime_error("[FATAL] Command pointer not found in any queue!");
   }
 }
 
-// ----------------------------
+// ---------------------------------
+// get_command_map specializations
+// ---------------------------------
 
 template<> unordered_map<long, Command<redisReply*>*>&
-Redox::get_command_map<redisReply*>() {
-//  cout << "redis reply command map at " << &commands_redis_reply << endl;
-  return commands_redis_reply; }
+Redox::get_command_map<redisReply*>() { return commands_redis_reply; }
 
 template<> unordered_map<long, Command<string>*>&
-Redox::get_command_map<string>() {
-//  cout << "string command map at " << &commands_string_r << endl;
-  return commands_string_r; }
+Redox::get_command_map<string>() { return commands_string_r; }
 
 template<> unordered_map<long, Command<char*>*>&
-Redox::get_command_map<char*>() {
-//  cout << "char* command map at " << &commands_char_p << endl;
-  return commands_char_p; }
+Redox::get_command_map<char*>() { return commands_char_p; }
 
 template<> unordered_map<long, Command<int>*>&
-Redox::get_command_map<int>() {
-//  cout << "int command map at " << &commands_int << " has size: " << commands_int.size() << endl;
-  return commands_int; }
+Redox::get_command_map<int>() { return commands_int; }
 
 template<> unordered_map<long, Command<long long int>*>&
-Redox::get_command_map<long long int>() {
-//  cout << "long long int command map at " << &commands_long_long_int << endl;
-  return commands_long_long_int; }
+Redox::get_command_map<long long int>() { return commands_long_long_int; }
 
 template<> unordered_map<long, Command<nullptr_t>*>&
 Redox::get_command_map<nullptr_t>() { return commands_null; }
 
 template<> unordered_map<long, Command<vector<string>>*>&
 Redox::get_command_map<vector<string>>() { return commands_vector_string; }
+
+template<> unordered_map<long, Command<set<string>>*>&
+Redox::get_command_map<set<string>>() { return commands_set_string; }
+
+template<> unordered_map<long, Command<unordered_set<string>>*>&
+Redox::get_command_map<unordered_set<string>>() { return commands_unordered_set_string; }
 
 // ----------------------------
 // Helpers
