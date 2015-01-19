@@ -40,6 +40,10 @@ Get the dependencies:
 
     sudo apt-get install libhiredis-dev libev-dev
 
+For testing:
+
+    sudo apt-get install libgtest-dev
+
 Build Redox and examples using CMake (a helper script is provided):
 
     cd redox
@@ -53,14 +57,14 @@ Basic synchronous usage:
 
     redox::Redox rdx = {"localhost", 6379}; // Initialize Redox
     rdx.start(); // Start the event loop
-    
+
     rdx.del("occupation");
-    
+
     if(!rdx.set("occupation", "carpenter")) // Set a key, check if succeeded
       cerr << "Failed to set key!" << endl;
-    
+
     cout << "key = occupation, value = \"" << rdx.get("occupation") << "\"" << endl;
-    
+
     rdx.stop(); // Shut down the event loop
 
 Output: `key = occupation, value = "carpenter"`
