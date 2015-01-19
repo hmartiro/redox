@@ -1,7 +1,7 @@
 redox
 ======
 
-Modern, asynchronous, and wicked fast C++11 bindings for Redis
+Modern, asynchronous, and wicked fast C++11 client for Redis
 
 ## Overview
 

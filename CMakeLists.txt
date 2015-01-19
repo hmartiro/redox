@@ -84,4 +84,7 @@ if (examples)
   add_executable(multi_client examples/multi-client.cpp ${SRC_ALL})
   target_link_libraries(multi_client ${LIB_REDIS})
 
+  add_executable(binary_data examples/binary_data.cpp ${SRC_ALL})
+  target_link_libraries(binary_data ${LIB_REDIS})
+
 endif()

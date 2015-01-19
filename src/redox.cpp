@@ -235,6 +235,30 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 template<class ReplyT>
 bool Redox::submit_to_server(Command<ReplyT>* c) {
   c->pending++;
+
+  // Process binary data if trailing quotation. This is a limited implementation
+  // to allow binary data between the first and the last quotes of the command string,
+  // if the very last character of the command is a quote ('"').
+  if(c->cmd[c->cmd.size()-1] == '"') {
+
+    // Indices of the quotes
+    int first = c->cmd.find('"');
+    int last = c->cmd.size()-1;
+
+    // Proceed only if the first and last quotes are different
+    if(first != last) {
+
+      string format = c->cmd.substr(0, first) + "%b";
+      string value = c->cmd.substr(first+1, last-first-1);
+      if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
+        cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
+        c->invoke_error(REDOX_SEND_ERROR);
+        return false;
+      }
+      return true;
+    }
+  }
+
   if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
     cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
     c->invoke_error(REDOX_SEND_ERROR);

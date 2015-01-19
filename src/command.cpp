@@ -46,7 +46,7 @@ void Command<std::string>::invoke_callback() {
     invoke_error(REDOX_WRONG_TYPE);
 
   } else {
-    std::string s = reply_obj->str;
+    std::string s(reply_obj->str, reply_obj->len);
     invoke(s);
   }
 }
@@ -129,7 +129,7 @@ void Command<std::vector<std::string>>::invoke_callback() {
         std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
         invoke_error(REDOX_WRONG_TYPE);
       }
-      v.push_back(r->str);
+      v.emplace_back(r->str, r->len);
     }
     invoke(v);
   }
@@ -153,7 +153,7 @@ void Command<std::unordered_set<std::string>>::invoke_callback() {
         std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
         invoke_error(REDOX_WRONG_TYPE);
       }
-      v.insert(r->str);
+      v.emplace(r->str, r->len);
     }
     invoke(v);
   }
@@ -177,7 +177,7 @@ void Command<std::set<std::string>>::invoke_callback() {
         std::cerr << "[ERROR] " << cmd << ": Received non-array reply." << std::endl;
         invoke_error(REDOX_WRONG_TYPE);
       }
-      v.insert(r->str);
+      v.emplace(r->str, r->len);
     }
     invoke(v);
   }
