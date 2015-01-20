@@ -13,6 +13,8 @@
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
 
+#include "utils/logger.hpp"
+
 namespace redox {
 
 static const int REDOX_UNINIT = -1;
@@ -38,7 +40,8 @@ public:
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
     double repeat, double after,
-    bool free_memory
+    bool free_memory,
+    log::Logger& logger
   );
 
   Redox* rdx;
@@ -102,6 +105,8 @@ private:
   void invoke_callback();
   bool is_error_reply();
   bool is_nil_reply();
+
+  log::Logger& logger;
 };
 
 template<class ReplyT>
@@ -111,9 +116,9 @@ Command<ReplyT>::Command(
     const std::string& cmd,
     const std::function<void(const std::string&, const ReplyT&)>& callback,
     const std::function<void(const std::string&, int status)>& error_callback,
-    double repeat, double after, bool free_memory
+    double repeat, double after, bool free_memory, log::Logger& logger
 ) : rdx(rdx), id(id), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory),
-    callback(callback), error_callback(error_callback)
+    callback(callback), error_callback(error_callback), logger(logger)
 {
   timer_guard.lock();
 }
@@ -128,9 +133,9 @@ void Command<ReplyT>::process_reply(redisReply* r) {
 
   pending--;
 
+  // Allow free() method to free memory
   if(!free_memory) {
-    // Allow free() method to free memory
-//    std::cout << "Command memory not being freed, free_memory = " << free_memory << std::endl;
+//    logger.trace() << "Command memory not being freed, free_memory = " << free_memory;
     free_guard.unlock();
     return;
   }
@@ -158,7 +163,8 @@ void Command<ReplyT>::process_reply(redisReply* r) {
 }
 
 template<class ReplyT>
-void Command<ReplyT>::invoke(const ReplyT& r) {
+void Command<
+  ReplyT>::invoke(const ReplyT& r) {
   if(callback) callback(cmd, r);
 }
 
@@ -171,7 +177,7 @@ template<class ReplyT>
 void Command<ReplyT>::free_reply_object() {
 
   if(reply_obj == nullptr) {
-    std::cerr << "[ERROR] " << cmd << ": Attempting to double free reply object." << std::endl;
+    logger.error() << cmd << ": Attempting to double free reply object.";
     return;
   }
 
@@ -182,7 +188,7 @@ void Command<ReplyT>::free_reply_object() {
 template<class ReplyT>
 void Command<ReplyT>::free_command(Command<ReplyT>* c) {
   c->rdx->template remove_active_command<ReplyT>(c->id);
-//  std::cout << "[INFO] Deleted Command " << c->id << " at " << c << std::endl;
+//  logger.debug() << "Deleted Command " << c->id << " at " << c;
   delete c;
 }
 
@@ -199,8 +205,7 @@ void Command<ReplyT>::free() {
 template<class ReplyT>
 const ReplyT& Command<ReplyT>::reply() {
   if(!ok()) {
-    std::cout << "[WARNING] " << cmd
-              << ": Accessing value of reply with status != OK." << std::endl;
+    logger.warning() << cmd << ": Accessing value of reply with status != OK.";
   }
   return reply_val;
 }

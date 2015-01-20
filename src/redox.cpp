@@ -14,14 +14,14 @@ void Redox::connected_callback(const redisAsyncContext *ctx, int status) {
   Redox* rdx = (Redox*) ctx->data;
 
   if (status != REDIS_OK) {
-    cerr << "[ERROR] Connecting to Redis: " << ctx->errstr << endl;
+    rdx->logger.fatal() << "Could not connect to Redis: " << ctx->errstr;
     rdx->connect_state = REDOX_CONNECT_ERROR;
 
   } else {
     // Disable hiredis automatically freeing reply objects
     ctx->c.reader->fn->freeObject = [](void *reply) {};
     rdx->connect_state = REDOX_CONNECTED;
-    cout << "[INFO] Connected to Redis." << endl;
+    rdx->logger.info() << "Connected to Redis.";
   }
 
   rdx->connect_waiter.notify_all();
@@ -33,10 +33,10 @@ void Redox::disconnected_callback(const redisAsyncContext *ctx, int status) {
   Redox* rdx = (Redox*) ctx->data;
 
   if (status != REDIS_OK) {
-    cerr << "[ERROR] Disconnecting from Redis: " << ctx->errstr << endl;
+    rdx->logger.error() << "Could not disconnect from Redis: " << ctx->errstr;
     rdx->connect_state = REDOX_DISCONNECT_ERROR;
   } else {
-    cout << "[INFO] Disconnected from Redis as planned." << endl;
+    rdx->logger.info() << "Disconnected from Redis as planned.";
     rdx->connect_state = REDOX_DISCONNECTED;
   }
 
@@ -56,7 +56,7 @@ void Redox::init_hiredis() {
   ctx->data = (void*)this; // Back-reference
 
   if (ctx->err) {
-    cout << "[ERROR] Could not create a hiredis context: " << ctx->errstr << endl;
+    logger.error() << "Could not create a hiredis context: " << ctx->errstr;
     connect_state = REDOX_CONNECT_ERROR;
     connect_waiter.notify_all();
     return;
@@ -72,8 +72,12 @@ void Redox::init_hiredis() {
 
 Redox::Redox(
   const string& host, const int port,
-  std::function<void(int)> connection_callback
-) : host(host), port(port), user_connection_callback(connection_callback) {
+  std::function<void(int)> connection_callback,
+  std::ostream& log_stream,
+  log::Level log_level
+) : host(host), port(port),
+    logger(log_stream, log_level),
+    user_connection_callback(connection_callback) {
 
   init_ev();
 
@@ -85,8 +89,11 @@ Redox::Redox(
 
 Redox::Redox(
   const std::string& path,
-  std::function<void(int)> connection_callback = nullptr
-) : path(path), user_connection_callback(connection_callback) {
+  std::function<void(int)> connection_callback,
+  std::ostream& log_stream,
+  log::Level log_level
+) : host(), port(), path(path), logger(log_stream, log_level),
+    user_connection_callback(connection_callback) {
 
   init_ev();
 
@@ -107,7 +114,7 @@ void Redox::run_event_loop() {
 
   // Handle connection error
   if(connect_state != REDOX_CONNECTED) {
-    cout << "[INFO] Did not connect, event loop exiting." << endl;
+    logger.warning() << "Did not connect, event loop exiting.";
     running_waiter.notify_one();
     return;
   }
@@ -125,7 +132,7 @@ void Redox::run_event_loop() {
     ev_run(evloop, EVRUN_NOWAIT);
   }
 
-  cout << "[INFO] Stop signal detected." << endl;
+  logger.info() << "Stop signal detected.";
 
   // Run a few more times to clear out canceled events
   for(int i = 0; i < 100; i++) {
@@ -133,8 +140,8 @@ void Redox::run_event_loop() {
   }
 
   if(commands_created != commands_deleted) {
-    cerr << "[ERROR] All commands were not freed! "
-         << commands_deleted << "/" << commands_created << endl;
+    logger.error() << "All commands were not freed! "
+         << commands_deleted << "/" << commands_created;
   }
 
   exited = true;
@@ -143,7 +150,7 @@ void Redox::run_event_loop() {
   // Let go for block_until_stopped method
   exit_waiter.notify_one();
 
-  cout << "[INFO] Event thread exited." << endl;
+  logger.info() << "Event thread exited.";
 }
 
 bool Redox::start() {
@@ -193,8 +200,8 @@ Redox::~Redox() {
 
   ev_loop_destroy(evloop);
 
-  std::cout << "[INFO] Redox created " << commands_created
-    << " Commands and freed " << commands_deleted << "." << std::endl;
+  logger.info() << "Redox created " << commands_created
+    << " Commands and freed " << commands_deleted << ".";
 }
 
 template<class ReplyT>
@@ -217,7 +224,7 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 
   Command<ReplyT>* c = rdx->find_command<ReplyT>(id);
   if(c == nullptr) {
-//    cout << "[WARNING] Couldn't find Command " << id << " in command_map (command_callback)." << endl;
+//    rdx->logger.warning() << "Couldn't find Command " << id << " in command_map (command_callback).";
     freeReplyObject(reply_obj);
     return;
   }
@@ -242,8 +249,8 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
   if(c->cmd[c->cmd.size()-1] == '"') {
 
     // Indices of the quotes
-    int first = c->cmd.find('"');
-    int last = c->cmd.size()-1;
+    size_t first = c->cmd.find('"');
+    size_t last = c->cmd.size()-1;
 
     // Proceed only if the first and last quotes are different
     if(first != last) {
@@ -251,7 +258,7 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
       string format = c->cmd.substr(0, first) + "%b";
       string value = c->cmd.substr(first+1, last-first-1);
       if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
-        cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
+        c->rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr;
         c->invoke_error(REDOX_SEND_ERROR);
         return false;
       }
@@ -260,7 +267,7 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
   }
 
   if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
-    cerr << "[ERROR] Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr << endl;
+    c->rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr;
     c->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
@@ -276,14 +283,14 @@ void Redox::submit_command_callback(struct ev_loop* loop, ev_timer* timer, int r
 
   Command<ReplyT>* c = rdx->find_command<ReplyT>(id);
   if(c == nullptr) {
-    cout << "[ERROR] Couldn't find Command " << id
-         << " in command_map (submit_command_callback)." << endl;
+    rdx->logger.error() << "Couldn't find Command " << id
+         << " in command_map (submit_command_callback).";
     return;
   }
 
   if(c->is_canceled()) {
 
-//    cout << "[INFO] Command " << c << " is completed, stopping event timer." << endl;
+//    logger.info() << "Command " << c << " is completed, stopping event timer.";
 
     c->timer_guard.lock();
     if((c->repeat != 0) || (c->after != 0))
@@ -340,7 +347,7 @@ void Redox::process_queued_commands(struct ev_loop* loop, ev_async* async, int r
     else if(rdx->process_queued_command<std::vector<std::string>>(id)) {}
     else if(rdx->process_queued_command<std::set<std::string>>(id)) {}
     else if(rdx->process_queued_command<std::unordered_set<std::string>>(id)) {}
-    else throw runtime_error("[FATAL] Command pointer not found in any queue!");
+    else throw runtime_error("Command pointer not found in any queue!");
   }
 }
 

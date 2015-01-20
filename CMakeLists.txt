@@ -13,7 +13,7 @@ endif(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
 
 # Print out compiler commands
-set(CMAKE_VERBOSE_MAKEFILE ON)
+# set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # ---------------------------------------------------------
 # Source files
@@ -26,7 +26,9 @@ set(SRC_CORE
   ${SRC_DIR}/command.cpp
 )
 
-set(SRC_ALL ${SRC_CORE})
+set(SRC_LOGGER ${SRC_DIR}/utils/logger.cpp)
+
+set(SRC_ALL ${SRC_CORE} ${SRC_LOGGER})
 
 # ---------------------------------------------------------
 # Libraries

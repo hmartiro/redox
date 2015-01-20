@@ -22,6 +22,7 @@
 #include <hiredis/async.h>
 #include <hiredis/adapters/libev.h>
 
+#include "utils/logger.hpp"
 #include "command.hpp"
 
 namespace redox {
@@ -47,7 +48,9 @@ public:
   Redox(
     const std::string& host = REDIS_DEFAULT_HOST,
     const int port = REDIS_DEFAULT_PORT,
-    std::function<void(int)> connection_callback = nullptr
+    std::function<void(int)> connection_callback = nullptr,
+    std::ostream& log_stream = std::cout,
+    log::Level log_level = log::Info
   );
 
   /**
@@ -55,7 +58,9 @@ public:
   */
   Redox(
     const std::string& path,
-    std::function<void(int)> connection_callback
+    std::function<void(int)> connection_callback,
+    std::ostream& log_stream = std::cout,
+    log::Level log_level = log::Info
   );
   ~Redox();
 
@@ -180,14 +185,17 @@ public:
     commands_deleted += 1;
   }
 
-private:
-
   // Redox server over TCP
-  std::string host;
-  int port;
+  const std::string host;
+  const int port;
 
   // Redox server over unix
-  std::string path;
+  const std::string path;
+
+  // Logger
+  log::Logger logger;
+
+private:
 
   // Setup code for the constructors
   void init_ev();
@@ -289,7 +297,7 @@ Command<ReplyT>* Redox::command(
 
   commands_created += 1;
   auto* c = new Command<ReplyT>(this, commands_created, cmd,
-    callback, error_callback, repeat, after, free_memory);
+    callback, error_callback, repeat, after, free_memory, logger);
 
   std::lock_guard<std::mutex> lg(queue_guard);
   std::lock_guard<std::mutex> lg2(command_map_guard);
@@ -300,7 +308,7 @@ Command<ReplyT>* Redox::command(
   // Signal the event loop to process this command
   ev_async_send(evloop, &async_w);
 
-//  std::cout << "[DEBUG] Created Command " << c->id << " at " << c << std::endl;
+//  logger.debug() << "Created Command " << c->id << " at " << c;
 
   return c;
 }
