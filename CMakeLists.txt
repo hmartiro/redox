@@ -89,4 +89,7 @@ if (examples)
   add_executable(binary_data examples/binary_data.cpp ${SRC_ALL})
   target_link_libraries(binary_data ${LIB_REDIS})
 
+  add_executable(pub_sub examples/pub_sub.cpp ${SRC_ALL})
+  target_link_libraries(pub_sub ${LIB_REDIS})
+
 endif()

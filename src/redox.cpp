@@ -4,6 +4,7 @@
 
 #include <signal.h>
 #include "redox.hpp"
+#include <string.h>
 
 using namespace std;
 
@@ -72,8 +73,8 @@ void Redox::init_hiredis() {
 
 Redox::Redox(
   const string& host, const int port,
-  std::function<void(int)> connection_callback,
-  std::ostream& log_stream,
+  function<void(int)> connection_callback,
+  ostream& log_stream,
   log::Level log_level
 ) : host(host), port(port),
     logger(log_stream, log_level),
@@ -88,9 +89,9 @@ Redox::Redox(
 }
 
 Redox::Redox(
-  const std::string& path,
-  std::function<void(int)> connection_callback,
-  std::ostream& log_stream,
+  const string& path,
+  function<void(int)> connection_callback,
+  ostream& log_stream,
   log::Level log_level
 ) : host(), port(), path(path), logger(log_stream, log_level),
     user_connection_callback(connection_callback) {
@@ -101,6 +102,10 @@ Redox::Redox(
   ctx = redisAsyncConnectUnix(path.c_str());
 
   init_hiredis();
+}
+
+void break_event_loop(struct ev_loop* loop, ev_async* async, int revents) {
+  ev_break(loop, EVBREAK_ALL);
 }
 
 void Redox::run_event_loop() {
@@ -124,11 +129,16 @@ void Redox::run_event_loop() {
   ev_async_init(&async_w, process_queued_commands);
   ev_async_start(evloop, &async_w);
 
+  // Set up an async watcher to break the loop
+  ev_async_init(&async_stop, break_event_loop);
+  ev_async_start(evloop, &async_stop);
+
   running = true;
   running_waiter.notify_one();
 
   // Run the event loop
   while (!to_exit) {
+//    logger.info() << "Event loop running";
     ev_run(evloop, EVRUN_NOWAIT);
   }
 
@@ -170,7 +180,8 @@ bool Redox::start() {
 
 void Redox::stop_signal() {
   to_exit = true;
-  ev_break(evloop, EVBREAK_ALL);
+  logger.debug() << "stop_signal() called, breaking event loop";
+  ev_async_send(evloop, &async_stop);
 }
 
 void Redox::block() {
@@ -241,6 +252,8 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 */
 template<class ReplyT>
 bool Redox::submit_to_server(Command<ReplyT>* c) {
+
+  Redox* rdx = c->rdx;
   c->pending++;
 
   // Process binary data if trailing quotation. This is a limited implementation
@@ -257,8 +270,8 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
 
       string format = c->cmd.substr(0, first) + "%b";
       string value = c->cmd.substr(first+1, last-first-1);
-      if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
-        c->rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr;
+      if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
+        rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << rdx->ctx->errstr;
         c->invoke_error(REDOX_SEND_ERROR);
         return false;
       }
@@ -266,8 +279,8 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
     }
   }
 
-  if (redisAsyncCommand(c->rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
-    c->rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << c->rdx->ctx->errstr;
+  if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
+    rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << rdx->ctx->errstr;
     c->invoke_error(REDOX_SEND_ERROR);
     return false;
   }
@@ -339,15 +352,106 @@ void Redox::process_queued_commands(struct ev_loop* loop, ev_async* async, int r
     rdx->command_queue.pop();
 
     if(rdx->process_queued_command<redisReply*>(id)) {}
-    else if(rdx->process_queued_command<std::string>(id)) {}
+    else if(rdx->process_queued_command<string>(id)) {}
     else if(rdx->process_queued_command<char*>(id)) {}
     else if(rdx->process_queued_command<int>(id)) {}
     else if(rdx->process_queued_command<long long int>(id)) {}
-    else if(rdx->process_queued_command<std::nullptr_t>(id)) {}
-    else if(rdx->process_queued_command<std::vector<std::string>>(id)) {}
-    else if(rdx->process_queued_command<std::set<std::string>>(id)) {}
-    else if(rdx->process_queued_command<std::unordered_set<std::string>>(id)) {}
+    else if(rdx->process_queued_command<nullptr_t>(id)) {}
+    else if(rdx->process_queued_command<vector<string>>(id)) {}
+    else if(rdx->process_queued_command<std::set<string>>(id)) {}
+    else if(rdx->process_queued_command<unordered_set<string>>(id)) {}
     else throw runtime_error("Command pointer not found in any queue!");
+  }
+}
+
+// ---------------------------------
+// Pub/Sub methods
+// ---------------------------------
+
+void Redox::subscribe(const string& topic,
+  function<void(const string& topic, const string& message)> msg_callback,
+  function<void(const string& topic)> sub_callback,
+  function<void(const string& topic)> unsub_callback,
+  function<void(const string& topic, int status)> err_callback
+) {
+
+  // Start pubsub mode. No non-sub/unsub commands can be emitted by this client.
+  pubsub_mode = true;
+
+  command<redisReply*>("SUBSCRIBE " + topic,
+    [this, topic, msg_callback, sub_callback, unsub_callback](const string &cmd, redisReply* const& reply) {
+
+      if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 3)) {
+
+        // Faster way of checking if a message or sub/unsub notification.
+        // If the last element is an integer, then it was a sub/unsub notification.
+        // If the last element is a string, then its a message.
+        // The goal is to avoid doing a string compare for "message" every message.
+        if(reply->element[2]->type == REDIS_REPLY_INTEGER) {
+
+          if(!strncmp(reply->element[0]->str, "sub", 3)) {
+            if(sub_callback) sub_callback(topic);
+
+          } else if(!strncmp(reply->element[0]->str, "uns", 3)) {
+            if(unsub_callback) unsub_callback(topic);
+
+          } else logger.error() << "Unknown pubsub message: " << reply->element[1]->str;
+        }
+
+        // Got a message
+        else if(reply->element[2]->type == REDIS_REPLY_STRING) {
+          char *msg = reply->element[2]->str;
+          if (msg && msg_callback) msg_callback(topic, reply->element[2]->str);
+        }
+      } else {
+        logger.error() << "Subscribe command got reply other than a 3-element array.";
+      }
+    },
+    [topic, err_callback](const string &cmd, int status) {
+      if(err_callback) err_callback(topic, status);
+    },
+    1e10 // To keep the command around for a few hundred years
+  );
+}
+
+void Redox::unsubscribe(const string& topic,
+  function<void(const string& topic, int status)> err_callback
+) {
+  command<redisReply*>("UNSUBSCRIBE " + topic,
+    nullptr,
+    [topic, err_callback](const string& cmd, int status) {
+      if(err_callback) err_callback(topic, status);
+    }
+  );
+}
+
+void Redox::publish(const string& topic, const string& msg,
+  function<void(const string& topic, const string& msg)> pub_callback,
+  function<void(const string& topic, int status)> err_callback
+) {
+  command<redisReply*>("PUBLISH " + topic + " " + msg,
+    [topic, msg, pub_callback](const string& command, redisReply* const& reply) {
+      if(pub_callback) pub_callback(topic, msg);
+    },
+    [topic, err_callback](const string& command, int status) {
+      if(err_callback) err_callback(topic, status);
+    }
+  );
+}
+
+/**
+* Throw an exception for any non-pubsub commands.
+*/
+void Redox::deny_non_pubsub(const std::string& cmd) {
+
+  std::string cmd_name = cmd.substr(0, cmd.find(' '));
+
+  // Compare with the command's first 5 characters
+  if(!cmd_name.compare("SUBSCRIBE") || !cmd_name.compare("UNSUBSCRIBE") ||
+    !cmd_name.compare("PSUBSCRIBE") || !cmd_name.compare("PUNSUBSCRIBE")) {
+  } else {
+    throw std::runtime_error("In pub/sub mode, this Redox instance can only issue "
+      "[p]subscribe/[p]unsubscribe commands! Use another instance for other commands.");
   }
 }
 
@@ -408,11 +512,11 @@ string Redox::get(const string& key) {
   return reply;
 };
 
-bool Redox::set(const std::string& key, const std::string& value) {
+bool Redox::set(const string& key, const string& value) {
   return command_blocking("SET " + key + " " + value);
 }
 
-bool Redox::del(const std::string& key) {
+bool Redox::del(const string& key) {
   return command_blocking("DEL " + key);
 }
 

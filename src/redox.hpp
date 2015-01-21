@@ -172,10 +172,44 @@ public:
   */
   bool del(const std::string& key);
 
-  // TODO pub/sub
-//  void publish(std::string channel, std::string msg);
-//  void subscribe(std::string channel, std::function<void(std::string channel, std::string msg)> callback);
-//  void unsubscribe(std::string channel);
+  // This is activated when subscribe is called. When active,
+  // all commands other than [P]SUBSCRIBE, [P]UNSUBSCRIBE
+  // throw exceptions
+  std::atomic_bool pubsub_mode = {false};
+
+  /**
+  * Subscribe to a topic.
+  *
+  * msg_callback: invoked whenever a message is received.
+  * sub_callback: invoked when successfully subscribed
+  * err_callback: invoked on some error state
+  */
+  void subscribe(const std::string& topic,
+    std::function<void(const std::string& topic, const std::string& message)> msg_callback,
+    std::function<void(const std::string& topic)> sub_callback = nullptr,
+    std::function<void(const std::string& topic)> unsub_callback = nullptr,
+    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  );
+
+  /**
+  * Publish to a topic. All subscribers will be notified.
+  *
+  * pub_callback: invoked when successfully published
+  * err_callback: invoked on some error state
+  */
+  void publish(const std::string& topic, const std::string& msg,
+    std::function<void(const std::string& topic, const std::string& msg)> pub_callback = nullptr,
+    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  );
+
+  /**
+  * Unsubscribe from a topic.
+  *
+  * err_callback: invoked on some error state
+  */
+  void unsubscribe(const std::string& topic,
+    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  );
 
   // Invoked by Command objects when they are completed
   template<class ReplyT>
@@ -212,8 +246,9 @@ private:
   // Dynamically allocated libev event loop
   struct ev_loop* evloop;
 
-  // Asynchronous watcher (for processing commands)
-  ev_async async_w;
+  // Asynchronous watchers
+  ev_async async_w; // For processing commands
+  ev_async async_stop; // For breaking the loop
 
   // Number of commands processed
   std::atomic_long cmd_count = {0};
@@ -277,9 +312,12 @@ private:
 
   template<class ReplyT>
   static void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
+
+  void deny_non_pubsub(const std::string& cmd);
 };
 
 // ---------------------------
+
 
 template<class ReplyT>
 Command<ReplyT>* Redox::command(
@@ -293,6 +331,11 @@ Command<ReplyT>* Redox::command(
 
   if(!running) {
     throw std::runtime_error("[ERROR] Need to start Redox before running commands!");
+  }
+
+  // Block if pubsub mode
+  if(pubsub_mode) {
+    deny_non_pubsub(cmd);
   }
 
   commands_created += 1;
