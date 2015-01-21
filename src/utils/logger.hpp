@@ -13,6 +13,7 @@
 #include <memory>
 #include <fstream>
 
+namespace redox {
 namespace log {
 
 // Log message levels
@@ -78,4 +79,5 @@ private:
   Level m_loglevel;
 };
 
+} // End namespace
 } // End namespace

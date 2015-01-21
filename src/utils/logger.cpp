@@ -14,6 +14,7 @@
 #define localtime_r(_Time, _Tm) localtime_s(_Tm, _Time)
 #endif // localtime_r
 
+namespace redox {
 namespace log {
 
 // Convert date and time info from tm to a character string
@@ -84,4 +85,5 @@ void Logger::log(Level l, std::string oMessage) {
   m_lock.unlock();
 }
 
+} // End namespace
 } // End namespace
