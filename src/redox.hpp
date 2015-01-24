@@ -172,6 +172,10 @@ public:
   */
   bool del(const std::string& key);
 
+  // ------------------------------------------------
+  // Publish/subscribe
+  // ------------------------------------------------
+
   // This is activated when subscribe is called. When active,
   // all commands other than [P]SUBSCRIBE, [P]UNSUBSCRIBE
   // throw exceptions
@@ -184,11 +188,25 @@ public:
   * sub_callback: invoked when successfully subscribed
   * err_callback: invoked on some error state
   */
-  void subscribe(const std::string& topic,
-    std::function<void(const std::string& topic, const std::string& message)> msg_callback,
-    std::function<void(const std::string& topic)> sub_callback = nullptr,
-    std::function<void(const std::string& topic)> unsub_callback = nullptr,
-    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  void subscribe(const std::string topic,
+    std::function<void(const std::string&, const std::string&)> msg_callback,
+    std::function<void(const std::string&)> sub_callback = nullptr,
+    std::function<void(const std::string&)> unsub_callback = nullptr,
+    std::function<void(const std::string&, int)> err_callback = nullptr
+  );
+
+  /**
+  * Subscribe to a topic with a pattern.
+  *
+  * msg_callback: invoked whenever a message is received.
+  * sub_callback: invoked when successfully subscribed
+  * err_callback: invoked on some error state
+  */
+  void psubscribe(const std::string topic,
+    std::function<void(const std::string&, const std::string&)> msg_callback,
+    std::function<void(const std::string&)> sub_callback = nullptr,
+    std::function<void(const std::string&)> unsub_callback = nullptr,
+    std::function<void(const std::string&, int)> err_callback = nullptr
   );
 
   /**
@@ -197,9 +215,9 @@ public:
   * pub_callback: invoked when successfully published
   * err_callback: invoked on some error state
   */
-  void publish(const std::string& topic, const std::string& msg,
-    std::function<void(const std::string& topic, const std::string& msg)> pub_callback = nullptr,
-    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  void publish(const std::string topic, const std::string msg,
+    std::function<void(const std::string&, const std::string&)> pub_callback = nullptr,
+    std::function<void(const std::string&, int)> err_callback = nullptr
   );
 
   /**
@@ -207,9 +225,25 @@ public:
   *
   * err_callback: invoked on some error state
   */
-  void unsubscribe(const std::string& topic,
-    std::function<void(const std::string& topic, int status)> err_callback = nullptr
+  void unsubscribe(const std::string topic,
+    std::function<void(const std::string&, int)> err_callback = nullptr
   );
+
+  /**
+  * Unsubscribe from a topic with a pattern.
+  *
+  * err_callback: invoked on some error state
+  */
+  void punsubscribe(const std::string topic,
+    std::function<void(const std::string&, int)> err_callback = nullptr
+  );
+
+  const std::set<std::string>& subscribed_topics() { return sub_queue; }
+  const std::set<std::string>& psubscribed_topics() { return psub_queue; }
+
+  // ------------------------------------------------
+  // Public only for Command class
+  // ------------------------------------------------
 
   // Invoked by Command objects when they are completed
   template<class ReplyT>
@@ -314,6 +348,25 @@ private:
   static void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
 
   void deny_non_pubsub(const std::string& cmd);
+
+  // Base for subscribe and psubscribe
+  void subscribe_raw(const std::string cmd_name, const std::string topic,
+    std::function<void(const std::string&, const std::string&)> msg_callback,
+    std::function<void(const std::string&)> sub_callback = nullptr,
+    std::function<void(const std::string&)> unsub_callback = nullptr,
+    std::function<void(const std::string&, int)> err_callback = nullptr
+  );
+
+  // Base for unsubscribe and punsubscribe
+  void unsubscribe_raw(const std::string cmd_name, const std::string topic,
+    std::function<void(const std::string&, int)> err_callback = nullptr
+  );
+
+  // Keep track of topics because we can only unsubscribe
+  // from subscribed topics and punsubscribe from
+  // psubscribed topics, or hiredis leads to segfaults
+  std::set<std::string> sub_queue;
+  std::set<std::string> psub_queue;
 };
 
 // ---------------------------

@@ -368,44 +368,68 @@ void Redox::process_queued_commands(struct ev_loop* loop, ev_async* async, int r
 // Pub/Sub methods
 // ---------------------------------
 
-void Redox::subscribe(const string& topic,
-  function<void(const string& topic, const string& message)> msg_callback,
-  function<void(const string& topic)> sub_callback,
-  function<void(const string& topic)> unsub_callback,
-  function<void(const string& topic, int status)> err_callback
+void Redox::subscribe_raw(const string cmd_name, const string topic,
+  function<void(const string&, const string&)> msg_callback,
+  function<void(const string&)> sub_callback,
+  function<void(const string&)> unsub_callback,
+  function<void(const string&, int)> err_callback
 ) {
 
   // Start pubsub mode. No non-sub/unsub commands can be emitted by this client.
   pubsub_mode = true;
 
-  command<redisReply*>("SUBSCRIBE " + topic,
+  command<redisReply*>(cmd_name + " " + topic,
     [this, topic, msg_callback, sub_callback, unsub_callback](const string &cmd, redisReply* const& reply) {
 
-      if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 3)) {
+      // For debugging only
+//      cout << "------" << endl;
+//      cout << cmd << " " << (reply->type == REDIS_REPLY_ARRAY) << " " << (reply->elements) << endl;
+//      for(int i = 0; i < reply->elements; i++) {
+//        redisReply* r = reply->element[i];
+//        cout << "element " << i << ", reply type = " << r->type << " ";
+//        if(r->type == REDIS_REPLY_STRING) cout << r->str << endl;
+//        else if(r->type == REDIS_REPLY_INTEGER) cout << r->integer << endl;
+//        else cout << "some other type" << endl;
+//      }
+//      cout << "------" << endl;
 
-        // Faster way of checking if a message or sub/unsub notification.
-        // If the last element is an integer, then it was a sub/unsub notification.
-        // If the last element is a string, then its a message.
-        // The goal is to avoid doing a string compare for "message" every message.
-        if(reply->element[2]->type == REDIS_REPLY_INTEGER) {
+      // If the last entry is an integer, then it is a [p]sub/[p]unsub command
+      if((reply->type == REDIS_REPLY_ARRAY) &&
+        (reply->element[reply->elements-1]->type == REDIS_REPLY_INTEGER)) {
 
-          if(!strncmp(reply->element[0]->str, "sub", 3)) {
-            if(sub_callback) sub_callback(topic);
+        if(!strncmp(reply->element[0]->str, "sub", 3)) {
+          sub_queue.insert(topic);
+          if(sub_callback) sub_callback(topic);
 
-          } else if(!strncmp(reply->element[0]->str, "uns", 3)) {
-            if(unsub_callback) unsub_callback(topic);
+        } else if(!strncmp(reply->element[0]->str, "psub", 4)) {
+          psub_queue.insert(topic);
+          if (sub_callback) sub_callback(topic);
 
-          } else logger.error() << "Unknown pubsub message: " << reply->element[1]->str;
+        } else if(!strncmp(reply->element[0]->str, "uns", 3)) {
+          sub_queue.erase(topic);
+          if (unsub_callback) unsub_callback(topic);
+
+        } else if(!strncmp(reply->element[0]->str, "puns", 4)) {
+          psub_queue.erase(topic);
+          if (unsub_callback) unsub_callback(topic);
         }
 
-        // Got a message
-        else if(reply->element[2]->type == REDIS_REPLY_STRING) {
-          char *msg = reply->element[2]->str;
-          if (msg && msg_callback) msg_callback(topic, reply->element[2]->str);
-        }
-      } else {
-        logger.error() << "Subscribe command got reply other than a 3-element array.";
+        else logger.error() << "Unknown pubsub message: " << reply->element[0]->str;
       }
+
+      // Message for subscribe
+      else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 3)) {
+        char *msg = reply->element[2]->str;
+        if (msg && msg_callback) msg_callback(topic, reply->element[2]->str);
+      }
+
+      // Message for psubscribe
+      else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 4)) {
+        char *msg = reply->element[2]->str;
+        if (msg && msg_callback) msg_callback(reply->element[2]->str, reply->element[3]->str);
+      }
+
+      else logger.error() << "Unknown pubsub message of type " << reply->type;
     },
     [topic, err_callback](const string &cmd, int status) {
       if(err_callback) err_callback(topic, status);
@@ -414,10 +438,36 @@ void Redox::subscribe(const string& topic,
   );
 }
 
-void Redox::unsubscribe(const string& topic,
-  function<void(const string& topic, int status)> err_callback
+void Redox::subscribe(const string topic,
+  function<void(const string&, const string&)> msg_callback,
+  function<void(const string&)> sub_callback,
+  function<void(const string&)> unsub_callback,
+  function<void(const string&, int)> err_callback
 ) {
-  command<redisReply*>("UNSUBSCRIBE " + topic,
+  if(sub_queue.find(topic) != sub_queue.end()) {
+    logger.warning() << "Already subscribed to " << topic << "!";
+    return;
+  }
+  subscribe_raw("SUBSCRIBE", topic, msg_callback, sub_callback, unsub_callback, err_callback);
+}
+
+void Redox::psubscribe(const string topic,
+  function<void(const string&, const string&)> msg_callback,
+  function<void(const string&)> sub_callback,
+  function<void(const string&)> unsub_callback,
+  function<void(const string&, int)> err_callback
+) {
+  if(psub_queue.find(topic) != psub_queue.end()) {
+    logger.warning() << "Already psubscribed to " << topic << "!";
+    return;
+  }
+  subscribe_raw("PSUBSCRIBE", topic, msg_callback, sub_callback, unsub_callback, err_callback);
+}
+
+void Redox::unsubscribe_raw(const string cmd_name, const string topic,
+  function<void(const string&, int)> err_callback
+) {
+  command<redisReply*>(cmd_name + " " + topic,
     nullptr,
     [topic, err_callback](const string& cmd, int status) {
       if(err_callback) err_callback(topic, status);
@@ -425,9 +475,29 @@ void Redox::unsubscribe(const string& topic,
   );
 }
 
-void Redox::publish(const string& topic, const string& msg,
-  function<void(const string& topic, const string& msg)> pub_callback,
-  function<void(const string& topic, int status)> err_callback
+void Redox::unsubscribe(const string topic,
+  function<void(const string&, int)> err_callback
+) {
+  if(sub_queue.find(topic) == sub_queue.end()) {
+    logger.warning() << "Cannot unsubscribe from " << topic << ", not subscribed!";
+    return;
+  }
+  unsubscribe_raw("UNSUBSCRIBE", topic, err_callback);
+}
+
+void Redox::punsubscribe(const string topic,
+  function<void(const string&, int)> err_callback
+) {
+  if(psub_queue.find(topic) == psub_queue.end()) {
+    logger.warning() << "Cannot punsubscribe from " << topic << ", not psubscribed!";
+    return;
+  }
+  unsubscribe_raw("PUNSUBSCRIBE", topic, err_callback);
+}
+
+void Redox::publish(const string topic, const string msg,
+  function<void(const string&, const string&)> pub_callback,
+  function<void(const string&, int)> err_callback
 ) {
   command<redisReply*>("PUBLISH " + topic + " " + msg,
     [topic, msg, pub_callback](const string& command, redisReply* const& reply) {
@@ -442,15 +512,15 @@ void Redox::publish(const string& topic, const string& msg,
 /**
 * Throw an exception for any non-pubsub commands.
 */
-void Redox::deny_non_pubsub(const std::string& cmd) {
+void Redox::deny_non_pubsub(const string& cmd) {
 
-  std::string cmd_name = cmd.substr(0, cmd.find(' '));
+  string cmd_name = cmd.substr(0, cmd.find(' '));
 
   // Compare with the command's first 5 characters
   if(!cmd_name.compare("SUBSCRIBE") || !cmd_name.compare("UNSUBSCRIBE") ||
     !cmd_name.compare("PSUBSCRIBE") || !cmd_name.compare("PUNSUBSCRIBE")) {
   } else {
-    throw std::runtime_error("In pub/sub mode, this Redox instance can only issue "
+    throw runtime_error("In pub/sub mode, this Redox instance can only issue "
       "[p]subscribe/[p]unsubscribe commands! Use another instance for other commands.");
   }
 }
