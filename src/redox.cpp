@@ -240,7 +240,7 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
     return;
   }
 
-  c->process_reply(reply_obj);
+  c->processReply(reply_obj);
 
   // Increment the Redox object command counter
   rdx->cmd_count++;
@@ -253,35 +253,35 @@ void Redox::command_callback(redisAsyncContext *ctx, void *r, void *privdata) {
 template<class ReplyT>
 bool Redox::submit_to_server(Command<ReplyT>* c) {
 
-  Redox* rdx = c->rdx;
-  c->pending++;
+  Redox* rdx = c->rdx_;
+  c->pending_++;
 
   // Process binary data if trailing quotation. This is a limited implementation
   // to allow binary data between the first and the last quotes of the command string,
   // if the very last character of the command is a quote ('"').
-  if(c->cmd[c->cmd.size()-1] == '"') {
+  if(c->cmd_[c->cmd_.size()-1] == '"') {
 
     // Indices of the quotes
-    size_t first = c->cmd.find('"');
-    size_t last = c->cmd.size()-1;
+    size_t first = c->cmd_.find('"');
+    size_t last = c->cmd_.size()-1;
 
     // Proceed only if the first and last quotes are different
     if(first != last) {
 
-      string format = c->cmd.substr(0, first) + "%b";
-      string value = c->cmd.substr(first+1, last-first-1);
-      if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
-        rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << rdx->ctx->errstr;
-        c->invoke_error(REDOX_SEND_ERROR);
+      string format = c->cmd_.substr(0, first) + "%b";
+      string value = c->cmd_.substr(first+1, last-first-1);
+      if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id_, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
+        rdx->logger.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx->errstr;
+        c->invokeError(REDOX_SEND_ERROR);
         return false;
       }
       return true;
     }
   }
 
-  if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id, c->cmd.c_str()) != REDIS_OK) {
-    rdx->logger.error() << "Could not send \"" << c->cmd << "\": " << rdx->ctx->errstr;
-    c->invoke_error(REDOX_SEND_ERROR);
+  if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id_, c->cmd_.c_str()) != REDIS_OK) {
+    rdx->logger.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx->errstr;
+    c->invokeError(REDOX_SEND_ERROR);
     return false;
   }
 
@@ -301,17 +301,17 @@ void Redox::submit_command_callback(struct ev_loop* loop, ev_timer* timer, int r
     return;
   }
 
-  if(c->is_canceled()) {
+  if(c->canceled()) {
 
 //    logger.info() << "Command " << c << " is completed, stopping event timer.";
 
-    c->timer_guard.lock();
-    if((c->repeat != 0) || (c->after != 0))
-      ev_timer_stop(loop, &c->timer);
-    c->timer_guard.unlock();
+    c->timer_guard_.lock();
+    if((c->repeat_ != 0) || (c->after_ != 0))
+      ev_timer_stop(loop, &c->timer_);
+    c->timer_guard_.unlock();
 
     // Mark for memory to be freed when all callbacks are received
-    c->timer.data = (void*)0;
+    c->timer_.data = (void*)(long)0;
 
     return;
   }
@@ -325,16 +325,16 @@ bool Redox::process_queued_command(long id) {
   Command<ReplyT>* c = find_command<ReplyT>(id);
   if(c == nullptr) return false;
 
-  if((c->repeat == 0) && (c->after == 0)) {
+  if((c->repeat_ == 0) && (c->after_ == 0)) {
     submit_to_server<ReplyT>(c);
 
   } else {
 
-    c->timer.data = (void*)c->id;
-    ev_timer_init(&c->timer, submit_command_callback<ReplyT>, c->after, c->repeat);
-    ev_timer_start(evloop, &c->timer);
+    c->timer_.data = (void*)c->id_;
+    ev_timer_init(&c->timer_, submit_command_callback<ReplyT>, c->after_, c->repeat_);
+    ev_timer_start(evloop, &c->timer_);
 
-    c->timer_guard.unlock();
+    c->timer_guard_.unlock();
   }
 
   return true;

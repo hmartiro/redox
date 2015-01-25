@@ -398,8 +398,8 @@ Command<ReplyT>* Redox::command(
   std::lock_guard<std::mutex> lg(queue_guard);
   std::lock_guard<std::mutex> lg2(command_map_guard);
 
-  get_command_map<ReplyT>()[c->id] = c;
-  command_queue.push(c->id);
+  get_command_map<ReplyT>()[c->id_] = c;
+  command_queue.push(c->id_);
 
   // Signal the event loop to process this command
   ev_async_send(evloop, &async_w);
@@ -438,8 +438,8 @@ Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
   );
 
   cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
-  c->reply_val = val;
-  c->reply_status = status;
+  c->reply_val_ = val;
+  c->reply_status_ = status;
 
   return c;
 }

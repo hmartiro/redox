@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <string>
 #include <functional>
 #include <atomic>
@@ -30,184 +29,113 @@ class Redox;
 template<class ReplyT>
 class Command {
 
-friend class Redox;
-
 public:
-  Command(
-    Redox* rdx,
-    long id,
-    const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback,
-    const std::function<void(const std::string&, int status)>& error_callback,
-    double repeat, double after,
-    bool free_memory,
-    log::Logger& logger
-  );
-
-  Redox* rdx;
-
-  const long id;
-  const std::string cmd;
-  const double repeat;
-  const double after;
-
-  const bool free_memory;
-
-  redisReply* reply_obj = nullptr;
-
-  std::atomic_int pending = {0};
-
-  void invoke(const ReplyT& reply);
-  void invoke_error(int status);
-
-  const ReplyT& reply();
-  int status() { return reply_status; };
-  bool ok() { return reply_status == REDOX_OK; }
-  bool is_canceled() { return canceled; }
-
-  void cancel() { canceled = true; }
 
   /**
-  * Called by the user to free the redisReply object, when the free_memory
-  * flag is set to false for a command.
+  * Frees memory allocated by this command. Commands with free_memory = false
+  * must be freed by the user.
   */
   void free();
 
-  void process_reply(redisReply* r);
+  /**
+  * Cancels a repeating or delayed command.
+  */
+  void cancel() { canceled_ = true; }
 
-  ev_timer* get_timer() {
-    std::lock_guard<std::mutex> lg(timer_guard);
-    return &timer;
-  }
+  /**
+  * Returns true if the command has been canceled.
+  */
+  bool canceled() { return canceled_; }
 
-  static void free_command(Command<ReplyT>* c);
+  /**
+  * Returns the reply status of this command.
+  * Use ONLY with command_blocking.
+  */
+  int status() { return reply_status_; };
+
+  /**
+  * Returns true if this command got a successful reply.
+  * Use ONLY with command_blocking.
+  */
+  bool ok() { return reply_status_ == REDOX_OK; }
+
+  /**
+  * Returns the reply value, if the reply was successful (ok() == true).
+  * Use ONLY with command_blocking.
+  */
+  const ReplyT& reply();
+
+  // Allow public access to constructed data
+  Redox* const rdx_;
+  const long id_;
+  const std::string cmd_;
+  const double repeat_;
+  const double after_;
+  const bool free_memory_;
 
 private:
 
-  const std::function<void(const std::string&, const ReplyT&)> callback;
-  const std::function<void(const std::string&, int status)> error_callback;
+  Command(
+      Redox* rdx,
+      long id,
+      const std::string& cmd,
+      const std::function<void(const std::string&, const ReplyT&)>& callback,
+      const std::function<void(const std::string&, int status)>& error_callback,
+      double repeat, double after,
+      bool free_memory,
+      log::Logger& logger
+  );
+
+  // Handles a new reply from the server
+  void processReply(redisReply* r);
+
+  // Invoke a user callback from the reply object. This method is specialized
+  // for each ReplyT of Command.
+  void handleCallback();
+
+  // Directly invoke the user callbacks if the exist
+  void invokeSuccess(const ReplyT& reply) { if (success_callback_) success_callback_(cmd_, reply); }
+  void invokeError(int status) { if (error_callback_) error_callback_(cmd_, status); }
+
+  bool isErrorReply();
+  bool isNilReply();
+
+  // Delete the provided Command object and deregister as an active
+  // command from its Redox instance.
+  static void freeCommand(Command<ReplyT>* c);
+
+  // If needed, free the redisReply
+  void freeReply();
+
+  // The last server reply
+  redisReply* reply_obj_ = nullptr;
+
+  // Callbacks on success and error
+  const std::function<void(const std::string&, const ReplyT&)> success_callback_;
+  const std::function<void(const std::string&, int status)> error_callback_;
 
   // Place to store the reply value and status.
   // ONLY for blocking commands
-  ReplyT reply_val;
-  int reply_status;
+  ReplyT reply_val_;
+  int reply_status_;
 
-  std::atomic_bool canceled = {false};
+  // How many messages sent to server but not received reply
+  std::atomic_int pending_ = {0};
 
-  ev_timer timer;
-  std::mutex timer_guard;
+  // Whether a repeating or delayed command is canceled
+  std::atomic_bool canceled_ = {false};
+
+  // libev timer watcher
+  ev_timer timer_;
+  std::mutex timer_guard_;
 
   // Make sure we don't free resources until details taken care of
-  std::mutex free_guard;
+  std::mutex free_guard_;
 
-  void free_reply_object();
+  // Passed on from Redox class
+  log::Logger& logger_;
 
-  void invoke_callback();
-  bool is_error_reply();
-  bool is_nil_reply();
-
-  log::Logger& logger;
+  friend class Redox;
 };
-
-template<class ReplyT>
-Command<ReplyT>::Command(
-    Redox* rdx,
-    long id,
-    const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback,
-    const std::function<void(const std::string&, int status)>& error_callback,
-    double repeat, double after, bool free_memory, log::Logger& logger
-) : rdx(rdx), id(id), cmd(cmd), repeat(repeat), after(after), free_memory(free_memory),
-    callback(callback), error_callback(error_callback), logger(logger)
-{
-  timer_guard.lock();
-}
-
-template<class ReplyT>
-void Command<ReplyT>::process_reply(redisReply* r) {
-
-  free_guard.lock();
-
-  reply_obj = r;
-  invoke_callback();
-
-  pending--;
-
-  // Allow free() method to free memory
-  if(!free_memory) {
-//    logger.trace() << "Command memory not being freed, free_memory = " << free_memory;
-    free_guard.unlock();
-    return;
-  }
-
-  free_reply_object();
-
-  // Handle memory if all pending replies have arrived
-  if(pending == 0) {
-
-    // Just free non-repeating commands
-    if (repeat == 0) {
-      free_command(this);
-      return;
-
-    // Free repeating commands if timer is stopped
-    } else {
-      if((long)(get_timer()->data) == 0) {
-        free_command(this);
-        return;
-      }
-    }
-  }
-
-  free_guard.unlock();
-}
-
-template<class ReplyT>
-void Command<
-  ReplyT>::invoke(const ReplyT& r) {
-  if(callback) callback(cmd, r);
-}
-
-template<class ReplyT>
-void Command<ReplyT>::invoke_error(int status) {
-  if(error_callback) error_callback(cmd, status);
-}
-
-template<class ReplyT>
-void Command<ReplyT>::free_reply_object() {
-
-  if(reply_obj == nullptr) {
-    logger.error() << cmd << ": Attempting to double free reply object.";
-    return;
-  }
-
-  freeReplyObject(reply_obj);
-  reply_obj = nullptr;
-}
-
-template<class ReplyT>
-void Command<ReplyT>::free_command(Command<ReplyT>* c) {
-  c->rdx->template remove_active_command<ReplyT>(c->id);
-//  logger.debug() << "Deleted Command " << c->id << " at " << c;
-  delete c;
-}
-
-template<class ReplyT>
-void Command<ReplyT>::free() {
-
-  free_guard.lock();
-  free_reply_object();
-  free_guard.unlock();
-
-  free_command(this);
-}
-
-template<class ReplyT>
-const ReplyT& Command<ReplyT>::reply() {
-  if(!ok()) {
-    logger.warning() << cmd << ": Accessing value of reply with status != OK.";
-  }
-  return reply_val;
-}
 
 } // End namespace redis
