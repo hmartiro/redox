@@ -78,7 +78,7 @@ protected:
   */
   template<class ReplyT>
   Callback<ReplyT> print_and_check(const ReplyT& value) {
-    return print(check<ReplyT>(value));
+    return print<ReplyT>(check<ReplyT>(value));
   }
 
   /**

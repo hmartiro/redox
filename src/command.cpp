@@ -38,7 +38,11 @@ void Command<ReplyT>::processReply(redisReply* r) {
   free_guard_.lock();
 
   reply_obj_ = r;
+
+  reply_guard_.lock();
   parseReplyObject();
+  reply_guard_.unlock();
+
   invoke();
 
   pending_--;
@@ -109,7 +113,7 @@ void Command<ReplyT>::freeCommand(Command<ReplyT>* c) {
 */
 template<class ReplyT>
 ReplyT Command<ReplyT>::reply() {
-  std::lock_guard<std::mutex> lg(free_guard_);
+  std::lock_guard<std::mutex> lg(reply_guard_);
   if (!ok()) {
     logger_.warning() << cmd_ << ": Accessing reply value while status != OK.";
   }

@@ -146,6 +146,9 @@ private:
   // Make sure we don't free resources until details taken care of
   std::mutex free_guard_;
 
+  // Access the reply value only when not being changed
+  std::mutex reply_guard_;
+
   // For synchronous use
   std::condition_variable waiter_;
   std::mutex waiter_lock_;
