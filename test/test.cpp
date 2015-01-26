@@ -9,8 +9,9 @@
 
 namespace {
 
-using namespace redox;
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 // ------------------------------------------
 // The fixture for testing class Redox.
@@ -43,8 +44,8 @@ protected:
   mutex cmd_waiter_lock;
 
   // To make the callback code nicer
-  template <class ReplyT>
-  using Callback = std::function<void(const std::string&, const ReplyT&)>;
+  template<class ReplyT>
+  using Callback = std::function<void(Command<ReplyT>&)>;
 
   /**
   * Helper function that returns a command callback to print out the
@@ -53,8 +54,9 @@ protected:
   template<class ReplyT>
   Callback<ReplyT> check(const ReplyT& value) {
     cmd_count++;
-    return [this, value](const string& cmd, const ReplyT& reply) {
-      EXPECT_EQ(reply, value);
+    return [this, value](Command<ReplyT>& c) {
+      EXPECT_TRUE(c.ok());
+      if(c.ok()) EXPECT_EQ(c.reply(), value);
       cmd_count--;
       cmd_waiter.notify_all();
     };
@@ -65,9 +67,9 @@ protected:
   */
   template<class ReplyT>
   Callback<ReplyT> print(Callback<ReplyT> callback) {
-    return [callback](const string& cmd, const ReplyT& reply) {
-      cout << "[ASYNC] " << cmd << ": " << reply << endl;
-      callback(cmd, reply);
+    return [callback](Command<ReplyT>& c) {
+      if(c.ok()) cout << "[ASYNC] " << c.cmd() << ": " << c.reply() << endl;
+      callback(c);
     };
   }
 
@@ -90,18 +92,18 @@ protected:
   };
 
   template<class ReplyT>
-  void check_sync(Command<ReplyT>* c, const ReplyT& value) {
-    ASSERT_TRUE(c->ok());
-    EXPECT_EQ(c->reply(), value);
-    c->free();
+  void check_sync(Command<ReplyT>& c, const ReplyT& value) {
+    ASSERT_TRUE(c.ok());
+    EXPECT_EQ(c.reply(), value);
+    c.free();
   }
 
   template<class ReplyT>
-  void print_and_check_sync(Command<ReplyT>* c, const ReplyT& value) {
-    ASSERT_TRUE(c->ok());
-    EXPECT_EQ(c->reply(), value);
-    cout << "[SYNC] " << c->cmd_ << ": " << c->reply() << endl;
-    c->free();
+  void print_and_check_sync(Command<ReplyT>& c, const ReplyT& value) {
+    ASSERT_TRUE(c.ok());
+    EXPECT_EQ(c.reply(), value);
+    cout << "[SYNC] " << c.cmd_ << ": " << c.reply() << endl;
+    c.free();
   }
 };
 
@@ -132,9 +134,9 @@ TEST_F(RedoxTest, Incr) {
 }
 
 TEST_F(RedoxTest, Delayed) {
-  Command<int>* c = rdx.command<int>("INCR redox_test:a", check(1), nullptr, 0, 0.1);
+  Command<int>& c = rdx.command_looping<int>("INCR redox_test:a", check(1), 0, 0.1);
   this_thread::sleep_for(chrono::milliseconds(150));
-  c->cancel();
+  c.cancel();
   rdx.command<string>("GET redox_test:a", print_and_check(to_string(1)));
   wait_and_stop();
 }
@@ -143,14 +145,16 @@ TEST_F(RedoxTest, Loop) {
   int count = 0;
   int target_count = 100;
   double dt = 0.001;
-  Command<int>* c = rdx.command<int>("INCR redox_test:a",
-    [this, &count](const string& cmd, const int& reply) {
-      check(++count)(cmd, reply);
-    }, nullptr, dt);
+  Command<int>& cmd = rdx.command_looping<int>("INCR redox_test:a",
+      [this, &count](Command<int>& c) {
+        check(++count)(c);
+      },
+      dt
+  );
 
   double wait_time = dt * (target_count - 0.5);
   this_thread::sleep_for(std::chrono::duration<double>(wait_time));
-  c->cancel();
+  cmd.cancel();
 
   rdx.command<string>("GET redox_test:a", print_and_check(to_string(target_count)));
   wait_and_stop();

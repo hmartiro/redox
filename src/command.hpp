@@ -8,6 +8,7 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
 
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
@@ -17,10 +18,6 @@
 namespace redox {
 
 class Redox;
-//class Command;
-
-//template <typename ReplyT>
-//using CallbackT = std::function<void(Command<ReplyT>&)>;
 
 /**
 * The Command class represents a single command string to be sent to
@@ -55,25 +52,30 @@ public:
   void cancel() { canceled_ = true; }
 
   /**
+  * This method returns once this command's callback has been invoked
+  * (or would have been invoked if there is none) since the last call
+  * to block(). If it is the first call, then returns once the callback
+  * is invoked for the first time.
+  */
+  Command<ReplyT>& block();
+
+  /**
   * Returns true if the command has been canceled.
   */
   bool canceled() const { return canceled_; }
 
   /**
   * Returns the reply status of this command.
-  * Use ONLY with command_blocking.
   */
-  int status() const { return reply_status_; };
+  int status() const { return reply_status_; }
 
   /**
   * Returns true if this command got a successful reply.
-  * Use ONLY with command_blocking.
   */
   bool ok() const { return reply_status_ == OK_REPLY; }
 
   /**
   * Returns the reply value, if the reply was successful (ok() == true).
-  * Use ONLY with command_blocking.
   */
   const ReplyT& reply() const;
 
@@ -144,6 +146,11 @@ private:
 
   // Make sure we don't free resources until details taken care of
   std::mutex free_guard_;
+
+  // For synchronous use
+  std::condition_variable blocker_;
+  std::mutex blocker_lock_;
+  std::atomic_bool blocking_done_ = {false};
 
   // Passed on from Redox class
   log::Logger& logger_;

@@ -21,7 +21,8 @@ int main(int argc, char* argv[]) {
   Redox rdx = {"/var/run/redis/redis.sock", nullptr};
   if(!rdx.start()) return 1;
 
-  if(rdx.command_blocking("SET simple_loop:count 0")) {
+  bool status = rdx.command_blocking("SET simple_loop:count 0");
+  if(status) {
     cout << "Reset the counter to zero." << endl;
   } else {
     cerr << "Failed to reset counter." << endl;
@@ -39,7 +40,7 @@ int main(int argc, char* argv[]) {
   double t0 = time_s();
   atomic_int count(0);
 
-  Command<int>& cmd = rdx.command<int>(
+  Command<int>& cmd = rdx.command_looping<int>(
       cmd_str,
       [&count, &rdx](Command<int>& c) {
         if(!c.ok()) {
@@ -54,21 +55,17 @@ int main(int argc, char* argv[]) {
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
   cmd.cancel();
 
-  rdx.command<string>("GET simple_loop:count", [&](Command<string>& c) {
-    if(!c.ok()) return;
-    long final_count = stol(c.reply());
+  long final_count = stol(rdx.get("simple_loop:count"));
 
-    double t_elapsed = time_s() - t0;
-    double actual_freq = (double)count / t_elapsed;
 
-    cout << "Sent " << count << " commands in " << t_elapsed << "s, "
-        << "that's " << actual_freq << " commands/s." << endl;
+  double t_elapsed = time_s() - t0;
+  double actual_freq = (double)count / t_elapsed;
 
-    cout << "Final value of counter: " << final_count << endl;
+  cout << "Sent " << count << " commands in " << t_elapsed << "s, "
+      << "that's " << actual_freq << " commands/s." << endl;
 
-    rdx.stop_signal();
-  });
+  cout << "Final value of counter: " << final_count << endl;
 
-  rdx.block();
+  rdx.stop();
   return 0;
 }

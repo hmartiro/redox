@@ -26,6 +26,17 @@ Command<ReplyT>::Command(
 }
 
 template<class ReplyT>
+Command<ReplyT>& Command<ReplyT>::block() {
+  std::unique_lock<std::mutex> lk(blocker_lock_);
+  blocker_.wait(lk, [this]() {
+    logger_.info() << "checking blocker: " << blocking_done_;
+    return blocking_done_.load(); });
+  logger_.info() << "returning from block";
+  blocking_done_ = {false};
+  return *this;
+}
+
+template<class ReplyT>
 void Command<ReplyT>::processReply(redisReply* r) {
 
   free_guard_.lock();
@@ -33,8 +44,12 @@ void Command<ReplyT>::processReply(redisReply* r) {
   reply_obj_ = r;
   parseReplyObject();
   invoke();
-
+//  logger_.info() << "reply status " << reply_status_;
   pending_--;
+
+  blocking_done_ = true;
+//  logger_.info() << "notifying blocker";
+  blocker_.notify_all();
 
   // Allow free() method to free memory
   if (!free_memory_) {
@@ -163,19 +178,18 @@ bool Command<ReplyT>::checkNilReply() {
 
 template<>
 void Command<redisReply*>::parseReplyObject() {
+  if(!checkErrorReply()) reply_status_ = OK_REPLY;
   reply_val_ = reply_obj_;
 }
 
 template<>
 void Command<string>::parseReplyObject() {
-
   if(!isExpectedReply(REDIS_REPLY_STRING, REDIS_REPLY_STATUS)) return;
   reply_val_ = {reply_obj_->str, static_cast<size_t>(reply_obj_->len)};
 }
 
 template<>
 void Command<char*>::parseReplyObject() {
-
   if(!isExpectedReply(REDIS_REPLY_STRING, REDIS_REPLY_STATUS)) return;
   reply_val_ = reply_obj_->str;
 }

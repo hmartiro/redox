@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 
   vector<Command<int>*> commands;
   for(int i = 0; i < parallel; i++) {
-    commands.push_back(&rdx.command<int>(
+    commands.push_back(&rdx.command_looping<int>(
       cmd_str,
         [&count, &rdx](Command<int>& c) {
           if(!c.ok()) {

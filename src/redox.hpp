@@ -87,32 +87,44 @@ public:
   void stop();
 
   /**
-  * Create an asynchronous Redis command to be executed. Return a pointer to a
-  * Command object that represents this command. If the command succeeded, the
-  * callback is invoked with a reference to the reply. If something went wrong,
-  * the error_callback is invoked with an error_code. One of the two is guaranteed
-  * to be invoked. The method is templated by the expected data type of the reply,
-  * and can be one of {redisReply*, string, char*, int, long long int, nullptr_t}.
-  *
-  *            cmd: The command to be run.
-  *       callback: A function invoked on a successful reply from the server.
-  * error_callback: A function invoked on some error state.
-  *         repeat: If non-zero, executes the command continuously at the given rate
-  *                 in seconds, until cancel() is called on the Command object.
-  *          after: If non-zero, executes the command after the given delay in seconds.
-  *    free_memory: If true (default), Redox automatically frees the Command object and
-  *                 reply from the server after a callback is invoked. If false, the
-  *                 user is responsible for calling free() on the Command object.
+  * Asynchronously runs a command and invokes the callback when a reply is
+  * received or there is an error. The callback is guaranteed to be invoked
+  * exactly once. The Command object is provided to the callback, and the
+  * memory for it is automatically freed when the callback returns.
   */
   template<class ReplyT>
-  Command<ReplyT>& command(
-    const std::string& cmd,
-    const std::function<void(Command<ReplyT>&)>& callback = nullptr,
-    double repeat = 0.0,
-    double after = 0.0,
-    bool free_memory = true
+  void command(
+      const std::string& cmd,
+      const std::function<void(Command<ReplyT>&)>& callback = nullptr
   );
 
+  /**
+  * Asynchronously runs a command and ignores any errors or replies.
+  */
+  void command(const std::string& cmd) { command<redisReply*>(cmd, nullptr); }
+
+  /**
+  * Synchronously runs a command, returning the Command object only once
+  * a reply is received or there is an error. The user is responsible for
+  * calling the Command object's .free() method when done with it.
+  */
+  template<class ReplyT>
+  Command<ReplyT>& command_blocking(const std::string& cmd);
+
+  /**
+  * Synchronously runs a command, returning only once a reply is received
+  * or there's an error. The return value is true if the command got a
+  * successful reply, and false if something went wrong.
+  */
+  bool command_blocking(const std::string& cmd);
+
+  template<class ReplyT>
+  Command<ReplyT>& command_looping(
+      const std::string& cmd,
+      const std::function<void(Command<ReplyT>&)>& callback,
+      double repeat,
+      double after = 0.0
+  );
 
   /**
   * A wrapper around command() for synchronous use. Waits for a reply, populates it
@@ -121,8 +133,8 @@ public:
   * status() will give the error code, and reply() will return the reply data if
   * the call succeeded.
   */
-  template<class ReplyT>
-  Command<ReplyT>& command_blocking(const std::string& cmd);
+//  template<class ReplyT>
+//  Command<ReplyT>& command_blocking(const std::string& cmd);
 
   /**
   * Return the total number of successful commands processed by this Redox instance.
@@ -146,13 +158,13 @@ public:
   * Non-templated version of command in case you really don't care
   * about the reply and just want to send something off.
   */
-  void command(const std::string& command);
+//  void command(const std::string& command);
 
   /**
   * Non-templated version of command_blocking in case you really don't
   * care about the reply. Returns true if succeeded, false if error.
   */
-  bool command_blocking(const std::string& command);
+//  bool command_blocking(const std::string& command);
 
   /**
   * Redis GET command wrapper - return the value for the given key, or throw
@@ -265,6 +277,15 @@ public:
 
 private:
 
+  template<class ReplyT>
+  Command<ReplyT>& createCommand(
+      const std::string& cmd,
+      const std::function<void(Command<ReplyT>&)>& callback = nullptr,
+      double repeat = 0.0,
+      double after = 0.0,
+      bool free_memory = true
+  );
+
   // Setup code for the constructors
   void init_ev();
   void init_hiredis();
@@ -373,7 +394,7 @@ private:
 
 
 template<class ReplyT>
-Command<ReplyT>& Redox::command(
+Command<ReplyT>& Redox::createCommand(
   const std::string& cmd,
   const std::function<void(Command<ReplyT>&)>& callback,
   double repeat,
@@ -409,6 +430,24 @@ Command<ReplyT>& Redox::command(
 }
 
 template<class ReplyT>
+void Redox::command(
+    const std::string& cmd,
+    const std::function<void(Command<ReplyT>&)>& callback
+) {
+  createCommand(cmd, callback);
+}
+
+template<class ReplyT>
+Command<ReplyT>& Redox::command_looping(
+    const std::string& cmd,
+    const std::function<void(Command<ReplyT>&)>& callback,
+    double repeat,
+    double after
+) {
+  return createCommand(cmd, callback, repeat, after);
+}
+
+template<class ReplyT>
 Command<ReplyT>& Redox::command_blocking(const std::string& cmd) {
 
   std::condition_variable cv;
@@ -416,7 +455,7 @@ Command<ReplyT>& Redox::command_blocking(const std::string& cmd) {
   std::unique_lock<std::mutex> lk(m);
   std::atomic_bool done = {false};
 
-  Command<ReplyT>& c = command<ReplyT>(cmd,
+  Command<ReplyT>& c = createCommand<ReplyT>(cmd,
     [&cv, &done](Command<ReplyT>& cmd_obj) {
       done = true;
       cv.notify_one();

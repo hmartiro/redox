@@ -380,7 +380,7 @@ void Redox::subscribe_raw(const string cmd_name, const string topic,
   // Start pubsub mode. No non-sub/unsub commands can be emitted by this client.
   pubsub_mode = true;
 
-  command<redisReply*>(cmd_name + " " + topic,
+  command_looping<redisReply*>(cmd_name + " " + topic,
     [this, topic, msg_callback, err_callback, sub_callback, unsub_callback](Command<redisReply*>& c) {
 
       if(!c.ok()) {
@@ -401,6 +401,8 @@ void Redox::subscribe_raw(const string cmd_name, const string topic,
 //        else cout << "some other type" << endl;
 //      }
 //      cout << "------" << endl;
+
+      // TODO cancel this command on unsubscription?
 
       // If the last entry is an integer, then it is a [p]sub/[p]unsub command
       if((reply->type == REDIS_REPLY_ARRAY) &&
@@ -567,12 +569,8 @@ Redox::get_command_map<unordered_set<string>>() { return commands_unordered_set_
 // Helpers
 // ----------------------------
 
-void Redox::command(const string& cmd) {
-  command<redisReply*>(cmd);
-}
-
 bool Redox::command_blocking(const string& cmd) {
-  Command<redisReply*>& c = command_blocking<redisReply*>(cmd);
+  auto& c = command_blocking<redisReply*>(cmd);
   bool succeeded = c.ok();
   c.free();
   return succeeded;
