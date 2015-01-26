@@ -272,7 +272,8 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
       string value = c->cmd_.substr(first+1, last-first-1);
       if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id_, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
         rdx->logger.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx->errstr;
-        c->invokeError(REDOX_SEND_ERROR);
+        c->reply_status_ = Command<ReplyT>::SEND_ERROR;
+        c->invoke();
         return false;
       }
       return true;
@@ -281,7 +282,8 @@ bool Redox::submit_to_server(Command<ReplyT>* c) {
 
   if (redisAsyncCommand(rdx->ctx, command_callback<ReplyT>, (void*)c->id_, c->cmd_.c_str()) != REDIS_OK) {
     rdx->logger.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx->errstr;
-    c->invokeError(REDOX_SEND_ERROR);
+    c->reply_status_ = Command<ReplyT>::SEND_ERROR;
+    c->invoke();
     return false;
   }
 
@@ -379,7 +381,14 @@ void Redox::subscribe_raw(const string cmd_name, const string topic,
   pubsub_mode = true;
 
   command<redisReply*>(cmd_name + " " + topic,
-    [this, topic, msg_callback, sub_callback, unsub_callback](const string &cmd, redisReply* const& reply) {
+    [this, topic, msg_callback, err_callback, sub_callback, unsub_callback](Command<redisReply*>& c) {
+
+      if(!c.ok()) {
+        if(err_callback) err_callback(topic, c.status());
+        return;
+      }
+
+      redisReply* reply = c.reply();
 
       // For debugging only
 //      cout << "------" << endl;
@@ -398,19 +407,19 @@ void Redox::subscribe_raw(const string cmd_name, const string topic,
         (reply->element[reply->elements-1]->type == REDIS_REPLY_INTEGER)) {
 
         if(!strncmp(reply->element[0]->str, "sub", 3)) {
-          sub_queue.insert(topic);
+          subscribed_topics_.insert(topic);
           if(sub_callback) sub_callback(topic);
 
         } else if(!strncmp(reply->element[0]->str, "psub", 4)) {
-          psub_queue.insert(topic);
+          psubscribed_topics_.insert(topic);
           if (sub_callback) sub_callback(topic);
 
         } else if(!strncmp(reply->element[0]->str, "uns", 3)) {
-          sub_queue.erase(topic);
+          subscribed_topics_.erase(topic);
           if (unsub_callback) unsub_callback(topic);
 
         } else if(!strncmp(reply->element[0]->str, "puns", 4)) {
-          psub_queue.erase(topic);
+          psubscribed_topics_.erase(topic);
           if (unsub_callback) unsub_callback(topic);
         }
 
@@ -431,9 +440,6 @@ void Redox::subscribe_raw(const string cmd_name, const string topic,
 
       else logger.error() << "Unknown pubsub message of type " << reply->type;
     },
-    [topic, err_callback](const string &cmd, int status) {
-      if(err_callback) err_callback(topic, status);
-    },
     1e10 // To keep the command around for a few hundred years
   );
 }
@@ -444,7 +450,7 @@ void Redox::subscribe(const string topic,
   function<void(const string&)> unsub_callback,
   function<void(const string&, int)> err_callback
 ) {
-  if(sub_queue.find(topic) != sub_queue.end()) {
+  if(subscribed_topics_.find(topic) != subscribed_topics_.end()) {
     logger.warning() << "Already subscribed to " << topic << "!";
     return;
   }
@@ -457,7 +463,7 @@ void Redox::psubscribe(const string topic,
   function<void(const string&)> unsub_callback,
   function<void(const string&, int)> err_callback
 ) {
-  if(psub_queue.find(topic) != psub_queue.end()) {
+  if(psubscribed_topics_.find(topic) != psubscribed_topics_.end()) {
     logger.warning() << "Already psubscribed to " << topic << "!";
     return;
   }
@@ -468,9 +474,10 @@ void Redox::unsubscribe_raw(const string cmd_name, const string topic,
   function<void(const string&, int)> err_callback
 ) {
   command<redisReply*>(cmd_name + " " + topic,
-    nullptr,
-    [topic, err_callback](const string& cmd, int status) {
-      if(err_callback) err_callback(topic, status);
+    [topic, err_callback](Command<redisReply*>& c) {
+      if(!c.ok()) {
+        if (err_callback) err_callback(topic, c.status());
+      }
     }
   );
 }
@@ -478,7 +485,7 @@ void Redox::unsubscribe_raw(const string cmd_name, const string topic,
 void Redox::unsubscribe(const string topic,
   function<void(const string&, int)> err_callback
 ) {
-  if(sub_queue.find(topic) == sub_queue.end()) {
+  if(subscribed_topics_.find(topic) == subscribed_topics_.end()) {
     logger.warning() << "Cannot unsubscribe from " << topic << ", not subscribed!";
     return;
   }
@@ -488,7 +495,7 @@ void Redox::unsubscribe(const string topic,
 void Redox::punsubscribe(const string topic,
   function<void(const string&, int)> err_callback
 ) {
-  if(psub_queue.find(topic) == psub_queue.end()) {
+  if(psubscribed_topics_.find(topic) == psubscribed_topics_.end()) {
     logger.warning() << "Cannot punsubscribe from " << topic << ", not psubscribed!";
     return;
   }
@@ -500,11 +507,11 @@ void Redox::publish(const string topic, const string msg,
   function<void(const string&, int)> err_callback
 ) {
   command<redisReply*>("PUBLISH " + topic + " " + msg,
-    [topic, msg, pub_callback](const string& command, redisReply* const& reply) {
+    [topic, msg, err_callback, pub_callback](Command<redisReply*>& c) {
+      if(!c.ok()) {
+        if(err_callback) err_callback(topic, c.status());
+      }
       if(pub_callback) pub_callback(topic, msg);
-    },
-    [topic, err_callback](const string& command, int status) {
-      if(err_callback) err_callback(topic, status);
     }
   );
 }
@@ -565,20 +572,20 @@ void Redox::command(const string& cmd) {
 }
 
 bool Redox::command_blocking(const string& cmd) {
-  Command<redisReply*>* c = command_blocking<redisReply*>(cmd);
-  bool succeeded = c->ok();
-  c->free();
+  Command<redisReply*>& c = command_blocking<redisReply*>(cmd);
+  bool succeeded = c.ok();
+  c.free();
   return succeeded;
 }
 
 string Redox::get(const string& key) {
 
-  auto c = command_blocking<char*>("GET " + key);
-  if(!c->ok()) {
-    throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c->status()));
+  Command<char*>& c = command_blocking<char*>("GET " + key);
+  if(!c.ok()) {
+    throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c.status()));
   }
-  string reply = c->reply();
-  c->free();
+  string reply = c.reply();
+  c.free();
   return reply;
 };
 

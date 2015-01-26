@@ -105,14 +105,14 @@ public:
   *                 user is responsible for calling free() on the Command object.
   */
   template<class ReplyT>
-  Command<ReplyT>* command(
+  Command<ReplyT>& command(
     const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback = nullptr,
-    const std::function<void(const std::string&, int status)>& error_callback = nullptr,
+    const std::function<void(Command<ReplyT>&)>& callback = nullptr,
     double repeat = 0.0,
     double after = 0.0,
     bool free_memory = true
   );
+
 
   /**
   * A wrapper around command() for synchronous use. Waits for a reply, populates it
@@ -122,7 +122,7 @@ public:
   * the call succeeded.
   */
   template<class ReplyT>
-  Command<ReplyT>* command_blocking(const std::string& cmd);
+  Command<ReplyT>& command_blocking(const std::string& cmd);
 
   /**
   * Return the total number of successful commands processed by this Redox instance.
@@ -238,8 +238,8 @@ public:
     std::function<void(const std::string&, int)> err_callback = nullptr
   );
 
-  const std::set<std::string>& subscribed_topics() { return sub_queue; }
-  const std::set<std::string>& psubscribed_topics() { return psub_queue; }
+  const std::set<std::string>& subscribed_topics() { return subscribed_topics_; }
+  const std::set<std::string>& psubscribed_topics() { return psubscribed_topics_; }
 
   // ------------------------------------------------
   // Public only for Command class
@@ -365,18 +365,17 @@ private:
   // Keep track of topics because we can only unsubscribe
   // from subscribed topics and punsubscribe from
   // psubscribed topics, or hiredis leads to segfaults
-  std::set<std::string> sub_queue;
-  std::set<std::string> psub_queue;
+  std::set<std::string> subscribed_topics_;
+  std::set<std::string> psubscribed_topics_;
 };
 
 // ---------------------------
 
 
 template<class ReplyT>
-Command<ReplyT>* Redox::command(
+Command<ReplyT>& Redox::command(
   const std::string& cmd,
-  const std::function<void(const std::string&, const ReplyT&)>& callback,
-  const std::function<void(const std::string&, int status)>& error_callback,
+  const std::function<void(Command<ReplyT>&)>& callback,
   double repeat,
   double after,
   bool free_memory
@@ -393,7 +392,7 @@ Command<ReplyT>* Redox::command(
 
   commands_created += 1;
   auto* c = new Command<ReplyT>(this, commands_created, cmd,
-    callback, error_callback, repeat, after, free_memory, logger);
+    callback, repeat, after, free_memory, logger);
 
   std::lock_guard<std::mutex> lg(queue_guard);
   std::lock_guard<std::mutex> lg2(command_map_guard);
@@ -406,41 +405,26 @@ Command<ReplyT>* Redox::command(
 
 //  logger.debug() << "Created Command " << c->id << " at " << c;
 
-  return c;
+  return *c;
 }
 
 template<class ReplyT>
-Command<ReplyT>* Redox::command_blocking(const std::string& cmd) {
-
-  ReplyT val;
-  std::atomic_int status(REDOX_UNINIT);
+Command<ReplyT>& Redox::command_blocking(const std::string& cmd) {
 
   std::condition_variable cv;
   std::mutex m;
-
   std::unique_lock<std::mutex> lk(m);
+  std::atomic_bool done = {false};
 
-  Command<ReplyT>* c = command<ReplyT>(cmd,
-    [&val, &status, &m, &cv](const std::string& cmd_str, const ReplyT& reply) {
-      std::unique_lock<std::mutex> ul(m);
-      val = reply;
-      status = REDOX_OK;
-      ul.unlock();
-      cv.notify_one();
-    },
-    [&status, &m, &cv](const std::string& cmd_str, int error) {
-      std::unique_lock<std::mutex> ul(m);
-      status = error;
-      ul.unlock();
+  Command<ReplyT>& c = command<ReplyT>(cmd,
+    [&cv, &done](Command<ReplyT>& cmd_obj) {
+      done = true;
       cv.notify_one();
     },
     0, 0, false // No repeats, don't free memory
   );
 
-  cv.wait(lk, [&status] { return status != REDOX_UNINIT; });
-  c->reply_val_ = val;
-  c->reply_status_ = status;
-
+  cv.wait(lk, [&done]() { return done.load(); });
   return c;
 }
 

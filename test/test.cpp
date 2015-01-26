@@ -100,7 +100,7 @@ protected:
   void print_and_check_sync(Command<ReplyT>* c, const ReplyT& value) {
     ASSERT_TRUE(c->ok());
     EXPECT_EQ(c->reply(), value);
-    cout << "[SYNC] " << c->cmd << ": " << c->reply() << endl;
+    cout << "[SYNC] " << c->cmd_ << ": " << c->reply() << endl;
     c->free();
   }
 };

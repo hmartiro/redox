@@ -8,6 +8,8 @@
 #include "../src/redox.hpp"
 
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 /**
 * Random string generator.
@@ -27,18 +29,19 @@ int main(int argc, char* argv[]) {
 
   string binary_data = random_string(10000);
 
-  auto c = rdx.command_blocking<string>("SET binary \"" + binary_data + "\"");
-  if(c->ok()) cout << "Reply: " << c->reply() << endl;
-  else cerr << "Failed to set key! Status: " << c->status() << endl;
-  c->free();
+  auto& c = rdx.command_blocking<string>("SET binary \"" + binary_data + "\"");
+  if(c.ok()) cout << "Reply: " << c.reply() << endl;
+  else cerr << "Failed to set key! Status: " << c.status() << endl;
+  c.free();
 
-  c = rdx.command_blocking<string>("GET binary");
-  if(c->ok()) {
-    if(c->reply() == binary_data) cout << "Binary data matches!" << endl;
+  auto& c2 = rdx.command_blocking<string>("GET binary");
+  if(c2.ok()) {
+    if(c2.reply() == binary_data) cout << "Binary data matches!" << endl;
     else cerr << "Binary data differs!" << endl;
   }
-  else cerr << "Failed to get key! Status: " << c->status() << endl;
-  c->free();
+  else cerr << "Failed to get key! Status: " << c2.status() << endl;
+  c2.free();
 
   rdx.stop(); // Shut down the event loop
+  return 0;
 }

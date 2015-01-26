@@ -8,7 +8,8 @@
 #include "../src/redox.hpp"
 
 using namespace std;
-using namespace redox;
+using redox::Redox;
+using redox::Command;
 
 double time_s() {
   unsigned long ms = chrono::system_clock::now().time_since_epoch() / chrono::microseconds(1);
@@ -17,7 +18,7 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  Redox rdx = {"localhost", 6379};
+  Redox rdx = {"/var/run/redis/redis.sock", nullptr};
   if(!rdx.start()) return 1;
 
   if(rdx.command_blocking("SET simple_loop:count 0")) {
@@ -38,31 +39,36 @@ int main(int argc, char* argv[]) {
   double t0 = time_s();
   atomic_int count(0);
 
-  Command<int>* c = rdx.command<int>(
+  Command<int>& cmd = rdx.command<int>(
       cmd_str,
-      [&count, &rdx](const string &cmd, const int& value) { count++; },
-      [](const string& cmd, int status) { cerr << "Bad reply: " << status << endl; },
+      [&count, &rdx](Command<int>& c) {
+        if(!c.ok()) {
+          cerr << "Bad reply: " << c.status() << endl;
+        }
+        count++;
+      },
       dt
   );
 
   // Wait for t time, then stop the command.
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  c->cancel();
+  cmd.cancel();
 
-  // Get the final value of the counter
-  auto get_cmd = rdx.command_blocking<string>("GET simple_loop:count");
-  long final_count = stol(get_cmd->reply());
-  get_cmd->free();
+  rdx.command<string>("GET simple_loop:count", [&](Command<string>& c) {
+    if(!c.ok()) return;
+    long final_count = stol(c.reply());
 
-  rdx.stop();
+    double t_elapsed = time_s() - t0;
+    double actual_freq = (double)count / t_elapsed;
 
-  double t_elapsed = time_s() - t0;
-  double actual_freq = (double)count / t_elapsed;
+    cout << "Sent " << count << " commands in " << t_elapsed << "s, "
+        << "that's " << actual_freq << " commands/s." << endl;
 
-  cout << "Sent " << count << " commands in " << t_elapsed << "s, "
-       << "that's " << actual_freq << " commands/s." << endl;
+    cout << "Final value of counter: " << final_count << endl;
 
-  cout << "Final value of counter: " << final_count << endl;
+    rdx.stop_signal();
+  });
 
+  rdx.block();
   return 0;
 }

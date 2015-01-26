@@ -6,10 +6,13 @@
 #include "../src/redox.hpp"
 
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 int main(int argc, char* argv[]) {
 
-  redox::Redox rdx = {"localhost", 6379}; // Initialize Redox
+  Redox rdx = {"localhost", 6379, nullptr, cout, redox::log::Info}; // Initialize Redox
+
   if(!rdx.start()) return 1; // Start the event loop
 
   rdx.del("occupation");
@@ -20,4 +23,5 @@ int main(int argc, char* argv[]) {
   cout << "key = \"occupation\", value = \"" << rdx.get("occupation") << "\"" << endl;
 
   rdx.stop(); // Shut down the event loop
+  return 0;
 }

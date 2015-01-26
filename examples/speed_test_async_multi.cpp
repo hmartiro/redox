@@ -9,7 +9,8 @@
 #include "../src/redox.hpp"
 
 using namespace std;
-using namespace redox;
+using redox::Redox;
+using redox::Command;
 
 double time_s() {
   unsigned long ms = chrono::system_clock::now().time_since_epoch() / chrono::microseconds(1);
@@ -42,25 +43,29 @@ int main(int argc, char* argv[]) {
 
   vector<Command<int>*> commands;
   for(int i = 0; i < parallel; i++) {
-    commands.push_back(rdx.command<int>(
+    commands.push_back(&rdx.command<int>(
       cmd_str,
-      [&count, &rdx](const string &cmd, const int& value) { count++; },
-      [](const string& cmd, int status) { cerr << "Bad reply: " << status << endl; },
+        [&count, &rdx](Command<int>& c) {
+          if(!c.ok()) {
+            cerr << "Bad reply: " << c.status() << endl;
+          }
+          count++;
+        },
       dt
     ));
   }
 
   // Wait for t time, then stop the command.
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  for(auto c : commands) c->cancel();
+  for(auto& c : commands) c->cancel();
+
+  double t_elapsed = time_s() - t0;
+  double actual_freq = (double)count / t_elapsed;
 
   // Get the final value of the counter
   long final_count = stol(rdx.get("simple_loop:count"));
 
   rdx.stop();
-
-  double t_elapsed = time_s() - t0;
-  double actual_freq = (double)count / t_elapsed;
 
   cout << "Sent " << count << " commands in " << t_elapsed << "s, "
        << "that's " << actual_freq << " commands/s." << endl;

@@ -37,20 +37,18 @@ int main(int argc, char* argv[]) {
   int count = 0;
 
   while(time_s() < t_end) {
-    Command<int>* c = rdx.command_blocking<int>(cmd_str);
-    if(!c->ok()) cerr << "Bad reply, code: " << c->status() << endl;
-    c->free();
+    Command<int>& c = rdx.command_blocking<int>(cmd_str);
+    if(!c.ok()) cerr << "Bad reply, code: " << c.status() << endl;
+    c.free();
     count++;
   }
 
-  auto get_cmd = rdx.command_blocking<string>("GET simple_loop:count");
-  long final_count = stol(get_cmd->reply());
-  get_cmd->free();
-
-  rdx.stop();
-
   double t_elapsed = time_s() - t0;
   double actual_freq = (double)count / t_elapsed;
+
+  long final_count = stol(rdx.get("simple_loop:count"));
+
+  rdx.stop();
 
   cout << "Sent " << count << " commands in " << t_elapsed << "s, "
        << "that's " << actual_freq << " commands/s." << endl;

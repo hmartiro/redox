@@ -18,11 +18,10 @@ Command<ReplyT>::Command(
     Redox* rdx,
     long id,
     const std::string& cmd,
-    const std::function<void(const std::string&, const ReplyT&)>& callback,
-    const std::function<void(const std::string&, int status)>& error_callback,
+    const std::function<void(Command<ReplyT>&)>& callback,
     double repeat, double after, bool free_memory, log::Logger& logger
 ) : rdx_(rdx), id_(id), cmd_(cmd), repeat_(repeat), after_(after), free_memory_(free_memory),
-    success_callback_(callback), error_callback_(error_callback), logger_(logger) {
+    callback_(callback),  logger_(logger) {
   timer_guard_.lock();
 }
 
@@ -32,7 +31,8 @@ void Command<ReplyT>::processReply(redisReply* r) {
   free_guard_.lock();
 
   reply_obj_ = r;
-  handleCallback();
+  parseReplyObject();
+  invoke();
 
   pending_--;
 
@@ -96,7 +96,7 @@ void Command<ReplyT>::freeCommand(Command<ReplyT>* c) {
 
 
 template<class ReplyT>
-const ReplyT& Command<ReplyT>::reply() {
+const ReplyT& Command<ReplyT>::reply() const {
   if (!ok()) {
     logger_.warning() << cmd_ << ": Accessing value of reply with status != OK.";
   }
@@ -104,179 +104,133 @@ const ReplyT& Command<ReplyT>::reply() {
 }
 
 template<class ReplyT>
-bool Command<ReplyT>::isErrorReply() {
+bool Command<ReplyT>::isExpectedReply(int type) {
+
+  if(reply_obj_->type == type) {
+    reply_status_ = OK_REPLY;
+    return true;
+  }
+
+  if(checkErrorReply() || checkNilReply()) return false;
+
+  logger_.error() << cmd_ << ": Received reply of type " << reply_obj_->type
+      << ", expected type " << type << ".";
+  reply_status_ = WRONG_TYPE;
+  return false;
+}
+
+template<class ReplyT>
+bool Command<ReplyT>::isExpectedReply(int typeA, int typeB) {
+
+  if((reply_obj_->type == typeA) || (reply_obj_->type == typeB)) {
+    reply_status_ = OK_REPLY;
+    return true;
+  }
+
+  if(checkErrorReply() || checkNilReply()) return false;
+
+  logger_.error() << cmd_ << ": Received reply of type " << reply_obj_->type
+      << ", expected type " << typeA << " or " << typeB << ".";
+  reply_status_ = WRONG_TYPE;
+  return false;
+}
+
+template<class ReplyT>
+bool Command<ReplyT>::checkErrorReply() {
 
   if (reply_obj_->type == REDIS_REPLY_ERROR) {
     logger_.error() << cmd_ << ": " << reply_obj_->str;
+    reply_status_ = ERROR_REPLY;
     return true;
   }
   return false;
 }
 
 template<class ReplyT>
-bool Command<ReplyT>::isNilReply() {
+bool Command<ReplyT>::checkNilReply() {
 
   if (reply_obj_->type == REDIS_REPLY_NIL) {
     logger_.warning() << cmd_ << ": Nil reply.";
+    reply_status_ = NIL_REPLY;
     return true;
   }
   return false;
 }
 
 // ----------------------------------------------------------------------------
-// Specializations of handleCallback for all data types
+// Specializations of parseReplyObject for all expected return types
 // ----------------------------------------------------------------------------
 
 template<>
-void Command<redisReply*>::handleCallback() {
-  invokeSuccess(reply_obj_);
+void Command<redisReply*>::parseReplyObject() {
+  reply_val_ = reply_obj_;
 }
 
 template<>
-void Command<string>::handleCallback() {
+void Command<string>::parseReplyObject() {
 
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-  else if(isNilReply()) invokeError(REDOX_NIL_REPLY);
+  if(!isExpectedReply(REDIS_REPLY_STRING, REDIS_REPLY_STATUS)) return;
+  reply_val_ = {reply_obj_->str, static_cast<size_t>(reply_obj_->len)};
+}
 
-  else if(reply_obj_->type != REDIS_REPLY_STRING && reply_obj_->type != REDIS_REPLY_STATUS) {
-    logger_.error() << cmd_ << ": Received non-string reply.";
-    invokeError(REDOX_WRONG_TYPE);
+template<>
+void Command<char*>::parseReplyObject() {
 
-  } else {
-    string s(reply_obj_->str, reply_obj_->len);
-    invokeSuccess(s);
+  if(!isExpectedReply(REDIS_REPLY_STRING, REDIS_REPLY_STATUS)) return;
+  reply_val_ = reply_obj_->str;
+}
+
+template<>
+void Command<int>::parseReplyObject() {
+
+  if(!isExpectedReply(REDIS_REPLY_INTEGER)) return;
+  reply_val_ = (int) reply_obj_->integer;
+}
+
+template<>
+void Command<long long int>::parseReplyObject() {
+
+  if(!isExpectedReply(REDIS_REPLY_INTEGER)) return;
+  reply_val_ = reply_obj_->integer;
+}
+
+template<>
+void Command<nullptr_t>::parseReplyObject() {
+
+  if(!isExpectedReply(REDIS_REPLY_NIL)) return;
+  reply_val_ = nullptr;
+}
+
+template<>
+void Command<vector<string>>::parseReplyObject() {
+
+  if(!isExpectedReply(REDIS_REPLY_ARRAY)) return;
+
+  for(size_t i = 0; i < reply_obj_->elements; i++) {
+    redisReply* r = *(reply_obj_->element + i);
+    reply_val_.emplace_back(r->str, r->len);
   }
 }
 
 template<>
-void Command<char*>::handleCallback() {
+void Command<unordered_set<string>>::parseReplyObject() {
 
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-  else if(isNilReply()) invokeError(REDOX_NIL_REPLY);
+  if(!isExpectedReply(REDIS_REPLY_ARRAY)) return;
 
-  else if(reply_obj_->type != REDIS_REPLY_STRING && reply_obj_->type != REDIS_REPLY_STATUS) {
-    logger_.error() << cmd_ << ": Received non-string reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    invokeSuccess(reply_obj_->str);
+  for(size_t i = 0; i < reply_obj_->elements; i++) {
+    redisReply* r = *(reply_obj_->element + i);
+    reply_val_.emplace(r->str, r->len);
   }
 }
 
 template<>
-void Command<int>::handleCallback() {
+void Command<set<string>>::parseReplyObject() {
 
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-  else if(isNilReply()) invokeError(REDOX_NIL_REPLY);
+  if(!isExpectedReply(REDIS_REPLY_ARRAY)) return;
 
-  else if(reply_obj_->type != REDIS_REPLY_INTEGER) {
-    logger_.error() << cmd_ << ": Received non-integer reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    invokeSuccess((int) reply_obj_->integer);
-  }
-}
-
-template<>
-void Command<long long int>::handleCallback() {
-
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-  else if(isNilReply()) invokeError(REDOX_NIL_REPLY);
-
-  else if(reply_obj_->type != REDIS_REPLY_INTEGER) {
-    logger_.error() << cmd_ << ": Received non-integer reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    invokeSuccess(reply_obj_->integer);
-  }
-}
-
-template<>
-void Command<nullptr_t>::handleCallback() {
-
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-
-  else if(reply_obj_->type != REDIS_REPLY_NIL) {
-    logger_.error() << cmd_ << ": Received non-nil reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    invokeSuccess(nullptr);
-  }
-}
-
-
-template<>
-void Command<vector<string>>::handleCallback() {
-
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-
-  else if(reply_obj_->type != REDIS_REPLY_ARRAY) {
-    logger_.error() << cmd_ << ": Received non-array reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    vector<string> v;
-    size_t count = reply_obj_->elements;
-    for(size_t i = 0; i < count; i++) {
-      redisReply* r = *(reply_obj_->element + i);
-      if(r->type != REDIS_REPLY_STRING) {
-        logger_.error() << cmd_ << ": Received non-array reply.";
-        invokeError(REDOX_WRONG_TYPE);
-      }
-      v.emplace_back(r->str, r->len);
-    }
-    invokeSuccess(v);
-  }
-}
-
-template<>
-void Command<unordered_set<string>>::handleCallback() {
-
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-
-  else if(reply_obj_->type != REDIS_REPLY_ARRAY) {
-    logger_.error() << cmd_ << ": Received non-array reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    unordered_set<string> v;
-    size_t count = reply_obj_->elements;
-    for(size_t i = 0; i < count; i++) {
-      redisReply* r = *(reply_obj_->element + i);
-      if(r->type != REDIS_REPLY_STRING) {
-        logger_.error() << cmd_ << ": Received non-array reply.";
-        invokeError(REDOX_WRONG_TYPE);
-      }
-      v.emplace(r->str, r->len);
-    }
-    invokeSuccess(v);
-  }
-}
-
-template<>
-void Command<set<string>>::handleCallback() {
-
-  if(isErrorReply()) invokeError(REDOX_ERROR_REPLY);
-
-  else if(reply_obj_->type != REDIS_REPLY_ARRAY) {
-    logger_.error() << cmd_ << ": Received non-array reply.";
-    invokeError(REDOX_WRONG_TYPE);
-
-  } else {
-    set<string> v;
-    size_t count = reply_obj_->elements;
-    for(size_t i = 0; i < count; i++) {
-      redisReply* r = *(reply_obj_->element + i);
-      if(r->type != REDIS_REPLY_STRING) {
-        logger_.error() << cmd_ << ": Received non-array reply.";
-        invokeError(REDOX_WRONG_TYPE);
-      }
-      v.emplace(r->str, r->len);
-    }
-    invokeSuccess(v);
+  for(size_t i = 0; i < reply_obj_->elements; i++) {
+    redisReply* r = *(reply_obj_->element + i);
+    reply_val_.emplace(r->str, r->len);
   }
 }
 

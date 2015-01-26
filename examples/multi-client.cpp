@@ -6,6 +6,8 @@
 #include "../src/redox.hpp"
 
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 int main(int argc, char* argv[]) {
 
@@ -23,4 +25,6 @@ int main(int argc, char* argv[]) {
   rdx1.stop();
   rdx2.stop();
   rdx3.stop();
+
+  return 0;
 }

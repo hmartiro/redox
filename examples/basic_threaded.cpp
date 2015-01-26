@@ -8,6 +8,8 @@
 #include "../src/redox.hpp"
 
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 redox::Redox rdx = {"localhost", 6379};
 
@@ -27,8 +29,8 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < 5; i++) {
       rdx.command<string>(
           "GET counter",
-          [](const string& cmd, const string& value) {
-            cout << cmd << ": " << value << endl;
+          [](Command<string>& c) {
+            if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
           }
       );
       this_thread::sleep_for(chrono::milliseconds(1000));

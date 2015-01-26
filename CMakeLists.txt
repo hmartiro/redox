@@ -80,9 +80,6 @@ if (examples)
   add_executable(data_types examples/data_types.cpp ${SRC_ALL})
   target_link_libraries(data_types ${LIB_REDIS})
 
-  add_executable(string_v_char examples/string_vs_charp.cpp ${SRC_ALL})
-  target_link_libraries(string_v_char ${LIB_REDIS})
-
   add_executable(multi_client examples/multi-client.cpp ${SRC_ALL})
   target_link_libraries(multi_client ${LIB_REDIS})
 
@@ -91,5 +88,8 @@ if (examples)
 
   add_executable(pub_sub examples/pub_sub.cpp ${SRC_ALL})
   target_link_libraries(pub_sub ${LIB_REDIS})
+
+  add_executable(speed_test_pubsub examples/speed_test_pubsub ${SRC_ALL})
+  target_link_libraries(speed_test_pubsub ${LIB_REDIS})
 
 endif()

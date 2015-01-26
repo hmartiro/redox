@@ -9,6 +9,8 @@
 #include <vector>
 
 using namespace std;
+using redox::Redox;
+using redox::Command;
 
 int main(int argc, char* argv[]) {
 
@@ -20,39 +22,34 @@ int main(int argc, char* argv[]) {
   rdx.command_blocking("LPUSH mylist 1 2 3 4 5 6 7 8 9 10");
 
   rdx.command<vector<string>>("LRANGE mylist 0 4",
-    [](const string& cmd, const vector<string>& reply){
+    [](Command<vector<string>>& c){
+      if(!c.ok()) return;
       cout << "Last 5 elements as a vector: ";
-      for(const string& s : reply) cout << s << " ";
+      for (const string& s : c.reply()) cout << s << " ";
       cout << endl;
-    },
-    [](const string& cmd, int status) {
-      cerr << "Error with LRANGE: " << status << endl;
     }
   );
 
   rdx.command<unordered_set<string>>("LRANGE mylist 0 4",
-    [](const string& cmd, const unordered_set<string>& reply){
-      cout << "Last 5 elements as an unordered set: ";
-      for(const string& s : reply) cout << s << " ";
+    [](Command<unordered_set<string>>& c){
+      if(!c.ok()) return;
+      cout << "Last 5 elements as a hash: ";
+      for (const string& s : c.reply()) cout << s << " ";
       cout << endl;
-    },
-    [](const string& cmd, int status) {
-      cerr << "Error with LRANGE: " << status << endl;
     }
   );
 
   rdx.command<set<string>>("LRANGE mylist 0 4",
-    [&rdx](const string& cmd, const set<string>& reply){
-      cout << "Last 5 elements as a set: ";
-      for(const string& s : reply) cout << s << " ";
-      cout << endl;
-      rdx.stop_signal();
-    },
-    [&rdx](const string& cmd, int status) {
-      cerr << "Error with LRANGE: " << status << endl;
+    [&rdx](Command<set<string>>& c) {
+      if(c.ok()) {
+        cout << "Last 5 elements as a set: ";
+        for (const string& s : c.reply()) cout << s << " ";
+        cout << endl;
+      }
       rdx.stop_signal();
     }
   );
 
   rdx.block(); // Shut down the event loop
+  return 0;
 }

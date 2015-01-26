@@ -1,10 +1,4 @@
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include "hiredis/hiredis.h"
-#include "hiredis/async.h"
-#include "hiredis/adapters/libev.h"
 #include <iostream>
 #include "../src/redox.hpp"
 
@@ -55,4 +49,6 @@ int main(int argc, char *argv[]) {
   rdx_pub.publish("news", "whatup");
   rdx.block();
   rdx_pub.block();
+
+  return 0;
 }
