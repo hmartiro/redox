@@ -57,7 +57,7 @@ public:
   * to block(). If it is the first call, then returns once the callback
   * is invoked for the first time.
   */
-  Command<ReplyT>& block();
+  void wait();
 
   /**
   * Returns true if the command has been canceled.
@@ -77,7 +77,7 @@ public:
   /**
   * Returns the reply value, if the reply was successful (ok() == true).
   */
-  const ReplyT& reply() const;
+  ReplyT reply();
 
   const std::string& cmd() const { return cmd_; };
 
@@ -130,9 +130,8 @@ private:
   const std::function<void(Command<ReplyT>&)> callback_;
 
   // Place to store the reply value and status.
-  // ONLY for blocking commands
   ReplyT reply_val_;
-  int reply_status_;
+  std::atomic_int reply_status_;
 
   // How many messages sent to server but not received reply
   std::atomic_int pending_ = {0};
@@ -148,12 +147,18 @@ private:
   std::mutex free_guard_;
 
   // For synchronous use
-  std::condition_variable blocker_;
-  std::mutex blocker_lock_;
-  std::atomic_bool blocking_done_ = {false};
+  std::condition_variable waiter_;
+  std::mutex waiter_lock_;
+  std::atomic_bool waiting_done_ = {false};
 
   // Passed on from Redox class
   log::Logger& logger_;
+
+  // Explicitly delete copy constructor and assignment operator,
+  // Command objects should never be copied because they hold
+  // state with a network resource.
+  Command(const Command&) = delete;
+  Command& operator=(const Command&) = delete;
 
   friend class Redox;
 };

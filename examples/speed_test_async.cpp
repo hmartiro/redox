@@ -57,7 +57,6 @@ int main(int argc, char* argv[]) {
 
   long final_count = stol(rdx.get("simple_loop:count"));
 
-
   double t_elapsed = time_s() - t0;
   double actual_freq = (double)count / t_elapsed;
 

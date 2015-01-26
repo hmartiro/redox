@@ -449,21 +449,8 @@ Command<ReplyT>& Redox::command_looping(
 
 template<class ReplyT>
 Command<ReplyT>& Redox::command_blocking(const std::string& cmd) {
-
-  std::condition_variable cv;
-  std::mutex m;
-  std::unique_lock<std::mutex> lk(m);
-  std::atomic_bool done = {false};
-
-  Command<ReplyT>& c = createCommand<ReplyT>(cmd,
-    [&cv, &done](Command<ReplyT>& cmd_obj) {
-      done = true;
-      cv.notify_one();
-    },
-    0, 0, false // No repeats, don't free memory
-  );
-
-  cv.wait(lk, [&done]() { return done.load(); });
+  auto& c = createCommand<ReplyT>(cmd, nullptr, 0, 0, false);
+  c.wait();
   return c;
 }
 

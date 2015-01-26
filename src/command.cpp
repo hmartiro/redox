@@ -26,14 +26,10 @@ Command<ReplyT>::Command(
 }
 
 template<class ReplyT>
-Command<ReplyT>& Command<ReplyT>::block() {
-  std::unique_lock<std::mutex> lk(blocker_lock_);
-  blocker_.wait(lk, [this]() {
-    logger_.info() << "checking blocker: " << blocking_done_;
-    return blocking_done_.load(); });
-  logger_.info() << "returning from block";
-  blocking_done_ = {false};
-  return *this;
+void Command<ReplyT>::wait() {
+  std::unique_lock<std::mutex> lk(waiter_lock_);
+  waiter_.wait(lk, [this]() { return waiting_done_.load(); });
+  waiting_done_ = {false};
 }
 
 template<class ReplyT>
@@ -44,16 +40,14 @@ void Command<ReplyT>::processReply(redisReply* r) {
   reply_obj_ = r;
   parseReplyObject();
   invoke();
-//  logger_.info() << "reply status " << reply_status_;
+
   pending_--;
 
-  blocking_done_ = true;
-//  logger_.info() << "notifying blocker";
-  blocker_.notify_all();
+  waiting_done_ = true;
+  waiter_.notify_all();
 
   // Allow free() method to free memory
   if (!free_memory_) {
-//    logger.trace() << "Command memory not being freed, free_memory = " << free_memory;
     free_guard_.unlock();
     return;
   }
@@ -105,15 +99,19 @@ void Command<ReplyT>::freeReply() {
 template<class ReplyT>
 void Command<ReplyT>::freeCommand(Command<ReplyT>* c) {
   c->rdx_->template remove_active_command<ReplyT>(c->id_);
-//  logger.debug() << "Deleted Command " << c->id << " at " << c;
   delete c;
 }
 
-
+/**
+* Create a copy of the reply and return it. Use a guard
+* to make sure we don't return a reply while it is being
+* modified.
+*/
 template<class ReplyT>
-const ReplyT& Command<ReplyT>::reply() const {
+ReplyT Command<ReplyT>::reply() {
+  std::lock_guard<std::mutex> lg(free_guard_);
   if (!ok()) {
-    logger_.warning() << cmd_ << ": Accessing value of reply with status != OK.";
+    logger_.warning() << cmd_ << ": Accessing reply value while status != OK.";
   }
   return reply_val_;
 }
