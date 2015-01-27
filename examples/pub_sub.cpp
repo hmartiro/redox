@@ -35,9 +35,7 @@ int main(int argc, char *argv[]) {
   this_thread::sleep_for(chrono::milliseconds(10));
 
   publisher.publish("news", "one");
-  publisher.publish("news", "two", [](const string& topic, const string& msg) {
-    cout << "published to " << topic << ": " << msg << endl;
-  });
+  publisher.publish("news", "two");
   publisher.publish("sports", "three");
 
   this_thread::sleep_for(chrono::milliseconds(10));
