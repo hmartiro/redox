@@ -19,7 +19,7 @@
 */
 
 #include <signal.h>
-#include "redox.hpp"
+#include "client.hpp"
 
 using namespace std;
 

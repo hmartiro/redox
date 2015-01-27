@@ -72,7 +72,7 @@ public:
     const int port = REDIS_DEFAULT_PORT,
     std::function<void(int)> connection_callback = nullptr,
     std::ostream& log_stream = std::cout,
-    log::Level log_level = log::Info
+    log::Level log_level = log::Warning
   );
 
   /**
@@ -82,7 +82,7 @@ public:
     const std::string& path,
     std::function<void(int)> connection_callback,
     std::ostream& log_stream = std::cout,
-    log::Level log_level = log::Info
+    log::Level log_level = log::Warning
   );
 
   /**

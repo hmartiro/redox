@@ -27,25 +27,23 @@ Redox is built on top of
 asynchronous API of hiredis, even for synchronous commands. There is no dependency on
 Boost or any other libraries.
 
-### Performance Benchmarks
+## Benchmarks
 Benchmarks are given by averaging the results of five trials of the speed tests
 in `examples/` on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
 
 Local Redis server, TCP connection:
 
- * 100 commandLoop calls (`speed_test_async_multi`): **710,014 commands/s**
- * One commandLoop call (`speed_test_async`): **195,159 commands/s**
- * Looped commandSync call  (`speed_test_sync`): **23,609 commands/s**
+ * 100 command loops (`speed_test_async_multi`): **710,014 commands/s**
+ * One command loop (`speed_test_async`): **195,159 commands/s**
+ * Looped synchronous command (`speed_test_sync`): **28,609 commands/s**
 
-Results are comparable to that of an
-average laptop. On a high-end laptop or PC, `speed_test_async_multi` usually tops
-1 million commands per second. All results are slightly faster if over Unix sockets
-than TCP.
+Results are comparable to that of an average laptop. On a high-end machine,
+`speed_test_async_multi` usually tops 1,000,000 commands/s.
 
-## Install
+## Installation
 Instructions provided are for Ubuntu, but all components are platform-independent.
 
-### Build library from source
+#### Build from source
 Get the build environment and dependencies:
 
     sudo apt-get install git cmake build-essential
@@ -61,7 +59,7 @@ Install into system directories (optional):
 
     sudo make install
 
-### Build examples and test suite
+#### Build examples and test suite
 Enable examples using ccmake or the following:
 
     cmake -Dexamples=ON ..
@@ -76,4 +74,25 @@ then:
     ./test_redox
 
 ## Tutorial
-Coming soon. Take a look at `examples/` for now.
+Here is a hello world program for redox:
+
+    #include <iostream>
+    #include "redox.hpp"
+    
+    int main(int argc, char* argv[]) {
+    
+      redox::Redox rdx = {"localhost", 6379};
+      if(!rdx.connect()) return 1;
+    
+      rdx.set("hello", "world!");
+      std::cout << "Hello, " << rdx.get("hello") << std::endl;
+    
+      rdx.disconnect();
+      return 0;
+    }
+
+Compile and run:
+
+    $ g++ hello.cpp -o hello -std=c++11 -lredox -lev -lhiredis
+    $ ./hello
+    Hello, world!

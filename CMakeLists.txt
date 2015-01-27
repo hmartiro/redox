@@ -26,23 +26,32 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
 # ---------------------------------------------------------
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
+set(INC_DIR ${CMAKE_SOURCE_DIR}/include/redox)
 
 set(SRC_CORE
   ${SRC_DIR}/client.cpp
   ${SRC_DIR}/command.cpp
-  ${SRC_DIR}/subscriber.cpp
-)
+  ${SRC_DIR}/subscriber.cpp)
 
-set(SRC_LOGGER ${SRC_DIR}/utils/logger.cpp)
+set(INC_CORE
+    ${INC_DIR}/client.hpp
+    ${INC_DIR}/subscriber.hpp
+    ${INC_DIR}/command.hpp)
 
-set(SRC_ALL ${SRC_CORE} ${SRC_LOGGER})
+set(SRC_UTILS ${SRC_DIR}/utils/logger.cpp)
+set(INC_UTILS ${INC_DIR}/utils/logger.hpp)
 
-include_directories(${SRC_DIR})
+set(INC_WRAPPER ${CMAKE_SOURCE_DIR}/include/redox.hpp)
+
+set(SRC_ALL ${SRC_CORE} ${SRC_UTILS})
+set(INC_ALL ${INC_CORE} ${INC_UTILS} ${INC_WRAPPER})
+
+include_directories(${INC_DIR} ${INC_DIR/redox})
 
 # Dependent libraries - you may have to change
 # pthread to whatever C++11 threads depends on
 # for your platform
-set(REDOX_LIB_DEPS hiredis ev pthread)
+set(REDOX_LIB_DEPS ev pthread hiredis)
 
 # ---------------------------------------------------------
 # Library generation
@@ -50,7 +59,7 @@ set(REDOX_LIB_DEPS hiredis ev pthread)
 
 if (lib)
 
-  add_library(redox SHARED ${SRC_ALL})
+  add_library(redox SHARED ${SRC_ALL} ${INC_CORE})
   target_link_libraries(redox ${REDOX_LIB_DEPS})
 
   set_target_properties(redox
@@ -139,17 +148,16 @@ endif()
 # Install (sudo make install)
 # ---------------------------------------------------------
 
+set(CMAKE_INSTALL_PREFIX /usr/)
+
 # Install the dynamic library to /usr/lib
 install(TARGETS redox DESTINATION lib)
 
 # Install the headers into /usr/include/redox
-set(INC_CORE ${SRC_DIR}/client.hpp ${SRC_DIR}/subscriber.hpp)
-set(INC_UTILS ${SRC_DIR}/utils/logger.hpp)
 install(FILES ${INC_CORE} DESTINATION include/redox)
 install(FILES ${INC_UTILS} DESTINATION include/redox/utils)
 
-# Install the top-level header into /usr/include directly
-set(INC_WRAPPER ${SRC_DIR}/redox.hpp)
+# Install the top-level header directly into /usr/include
 install(FILES ${INC_WRAPPER} DESTINATION include)
 
 # ---------------------------------------------------------

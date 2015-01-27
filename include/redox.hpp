@@ -20,6 +20,6 @@
 
 #pragma once
 
-#include "client.hpp"
-#include "command.hpp"
-#include "subscriber.hpp"
+#include "redox/client.hpp"
+#include "redox/command.hpp"
+#include "redox/subscriber.hpp"
