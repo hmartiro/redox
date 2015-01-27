@@ -50,6 +50,11 @@ public:
   );
 
   /**
+  * Cleans up.
+  */
+  ~Subscriber();
+
+  /**
   * Same as .connect() on a Redox instance.
   */
   bool connect() { return rdx_.connect(); }
@@ -57,12 +62,12 @@ public:
   /**
   * Same as .disconnect() on a Redox instance.
   */
-  void disconnect() { return rdx_.disconnect(); }
+  void disconnect();
 
   /**
   * Same as .wait() on a Redox instance.
   */
-  void wait() { return rdx_.wait(); }
+  void wait() { rdx_.wait(); }
 
   /**
   * Subscribe to a topic.
@@ -111,14 +116,20 @@ public:
   );
 
   /**
-  * Return the topics that were subscribed() to.
+  * Return the topics that are subscribed() to.
   */
-  const std::set<std::string>& subscribedTopics() { return subscribed_topics_; }
+  std::set<std::string> subscribedTopics() {
+    std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
+    return subscribed_topics_;
+  }
 
   /**
-  * Return the topic patterns that were psubscribed() to.
+  * Return the topic patterns that are psubscribed() to.
   */
-  const std::set<std::string>& psubscribedTopics() { return psubscribed_topics_; }
+  std::set<std::string> psubscribedTopics() {
+    std::lock_guard<std::mutex> lg(psubscribed_topics_guard_);
+    return psubscribed_topics_;
+  }
 
 private:
 
@@ -142,10 +153,25 @@ private:
   // from subscribed topics and punsubscribe from
   // psubscribed topics, or hiredis leads to segfaults
   std::set<std::string> subscribed_topics_;
+  std::mutex subscribed_topics_guard_;
+
   std::set<std::string> psubscribed_topics_;
+  std::mutex psubscribed_topics_guard_;
+
+  // Set of persisting commands, so that we can cancel them
+  std::set<Command<redisReply*>*> commands_;
 
   // Reference to rdx_.logger_ for convenience
   log::Logger& logger_;
+
+  // CVs to wait for unsubscriptions
+  std::condition_variable cv_unsub_;
+  std::mutex cv_unsub_guard_;
+  std::condition_variable cv_punsub_;
+  std::mutex cv_punsub_guard_;
+
+  // Pending subscriptions
+  std::atomic_int num_pending_subs_ = {0};
 };
 
 } // End namespace

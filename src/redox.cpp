@@ -119,7 +119,7 @@ Redox::Redox(
   init_hiredis();
 }
 
-void break_event_loop(struct ev_loop* loop, ev_async* async, int revents) {
+void breakEventLoop(struct ev_loop* loop, ev_async* async, int revents) {
   ev_break(loop, EVBREAK_ALL);
 }
 
@@ -145,25 +145,38 @@ void Redox::runEventLoop() {
   ev_async_start(evloop_, &watcher_command_);
 
   // Set up an async watcher to break the loop
-  ev_async_init(&watcher_stop_, break_event_loop);
+  ev_async_init(&watcher_stop_, breakEventLoop);
   ev_async_start(evloop_, &watcher_stop_);
+
+  // Set up an async watcher which we signal every time
+  // we want a command freed
+  ev_async_init(&watcher_free_, freeQueuedCommands);
+  ev_async_start(evloop_, &watcher_free_);
 
   running_ = true;
   running_waiter_.notify_one();
 
   // Run the event loop
+  // TODO this hogs resources, but ev_run(evloop_) without
+  // the manual loop is slower. Maybe use a CV to run sparsely
+  // unless there are commands to process?
   while (!to_exit_) {
-//    logger.info() << "Event loop running";
     ev_run(evloop_, EVRUN_NOWAIT);
   }
 
-  logger_.info() << "Stop signal detected. Disconnecting from Redis.";
+  logger_.info() << "Stop signal detected. Closing down event loop.";
+
+  // Signal event loop to free all commands
+  freeAllCommands();
+
+  // Wait to receive server replies for clean hiredis disconnect
+  this_thread::sleep_for(chrono::milliseconds(10));
+  ev_run(evloop_, EVRUN_NOWAIT);
+
   if(connect_state_ == CONNECTED) redisAsyncDisconnect(ctx_);
 
-  // Run a few more times to disconnect and clear out canceled events
-  for(int i = 0; i < 100; i++) {
-    ev_run(evloop_, EVRUN_NOWAIT);
-  }
+  // Run once more to disconnect
+  ev_run(evloop_, EVRUN_NOWAIT);
 
   if(commands_created_ != commands_deleted_) {
     logger_.error() << "All commands were not freed! "
@@ -207,15 +220,11 @@ void Redox::wait() {
 
 Redox::~Redox() {
 
+  // Bring down the event loop
   disconnect();
 
-  if(event_loop_thread_.joinable())
-    event_loop_thread_.join();
-
+  if(event_loop_thread_.joinable()) event_loop_thread_.join();
   ev_loop_destroy(evloop_);
-
-  logger_.info() << "Redox created " << commands_created_
-    << " Commands and freed " << commands_deleted_ << ".";
 }
 
 template<class ReplyT>
@@ -266,7 +275,7 @@ bool Redox::submitToServer(Command<ReplyT>* c) {
 
       string format = c->cmd_.substr(0, first) + "%b";
       string value = c->cmd_.substr(first+1, last-first-1);
-      if (redisAsyncCommand(rdx->ctx_, commandCallback < ReplyT > , (void*) c->id_, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
+      if (redisAsyncCommand(rdx->ctx_, commandCallback<ReplyT>, (void*) c->id_, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
         rdx->logger_.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx_->errstr;
         c->reply_status_ = Command<ReplyT>::SEND_ERROR;
         c->invoke();
@@ -276,7 +285,7 @@ bool Redox::submitToServer(Command<ReplyT>* c) {
     }
   }
 
-  if (redisAsyncCommand(rdx->ctx_, commandCallback < ReplyT > , (void*) c->id_, c->cmd_.c_str()) != REDIS_OK) {
+  if (redisAsyncCommand(rdx->ctx_, commandCallback<ReplyT>, (void*) c->id_, c->cmd_.c_str()) != REDIS_OK) {
     rdx->logger_.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx_->errstr;
     c->reply_status_ = Command<ReplyT>::SEND_ERROR;
     c->invoke();
@@ -296,19 +305,6 @@ void Redox::submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int rev
   if(c == nullptr) {
     rdx->logger_.error() << "Couldn't find Command " << id
          << " in command_map (submitCommandCallback).";
-    return;
-  }
-
-  if(c->canceled()) {
-
-    c->timer_guard_.lock();
-    if((c->repeat_ != 0) || (c->after_ != 0))
-      ev_timer_stop(loop, &c->timer_);
-    c->timer_guard_.unlock();
-
-    // Mark for memory to be freed when all callbacks are received
-    c->timer_.data = (void*)(long)0;
-
     return;
   }
 
@@ -358,6 +354,90 @@ void Redox::processQueuedCommands(struct ev_loop* loop, ev_async* async, int rev
     else if(rdx->processQueuedCommand<unordered_set<string>>(id)) {}
     else throw runtime_error("Command pointer not found in any queue!");
   }
+}
+
+void Redox::freeQueuedCommands(struct ev_loop* loop, ev_async* async, int revents) {
+
+  Redox* rdx = (Redox*) ev_userdata(loop);
+
+  lock_guard<mutex> lg(rdx->free_queue_guard_);
+
+  while(!rdx->commands_to_free_.empty()) {
+    long id = rdx->commands_to_free_.front();
+    rdx->commands_to_free_.pop();
+
+    if(rdx->freeQueuedCommand<redisReply*>(id)) {}
+    else if(rdx->freeQueuedCommand<string>(id)) {}
+    else if(rdx->freeQueuedCommand<char*>(id)) {}
+    else if(rdx->freeQueuedCommand<int>(id)) {}
+    else if(rdx->freeQueuedCommand<long long int>(id)) {}
+    else if(rdx->freeQueuedCommand<nullptr_t>(id)) {}
+    else if(rdx->freeQueuedCommand<vector<string>>(id)) {}
+    else if(rdx->freeQueuedCommand<std::set<string>>(id)) {}
+    else if(rdx->freeQueuedCommand<unordered_set<string>>(id)) {}
+    else {}
+  }
+}
+
+template<class ReplyT>
+bool Redox::freeQueuedCommand(long id) {
+  Command<ReplyT>* c = findCommand<ReplyT>(id);
+  if(c == nullptr) return false;
+
+  c->freeReply();
+
+  // Stop the libev timer if this is a repeating command
+  if((c->repeat_ != 0) || (c->after_ != 0)) {
+    lock_guard<mutex> lg(c->timer_guard_);
+    ev_timer_stop(c->rdx_->evloop_, &c->timer_);
+  }
+
+  deregisterCommand<ReplyT>(c->id_);
+
+  delete c;
+
+  return true;
+}
+
+long Redox::freeAllCommands() {
+  return freeAllCommandsOfType<redisReply*>() +
+      freeAllCommandsOfType<string>() +
+      freeAllCommandsOfType<char*>() +
+      freeAllCommandsOfType<int>() +
+      freeAllCommandsOfType<long long int>() +
+      freeAllCommandsOfType<nullptr_t>() +
+      freeAllCommandsOfType<vector<string>>() +
+      freeAllCommandsOfType<std::set<string>>() +
+      freeAllCommandsOfType<unordered_set<string>>();
+}
+
+template<class ReplyT>
+long Redox::freeAllCommandsOfType() {
+
+  lock_guard<mutex> lg(free_queue_guard_);
+  lock_guard<mutex> lg2(queue_guard_);
+
+  auto& command_map = getCommandMap<ReplyT>();
+  long len = command_map.size();
+
+  for(auto& pair : command_map) {
+    Command<ReplyT>* c = pair.second;
+
+    c->freeReply();
+
+    // Stop the libev timer if this is a repeating command
+    if((c->repeat_ != 0) || (c->after_ != 0)) {
+      lock_guard<mutex> lg3(c->timer_guard_);
+      ev_timer_stop(c->rdx_->evloop_, &c->timer_);
+    }
+
+    delete c;
+  }
+
+  command_map.clear();
+  commands_deleted_ += len;
+
+  return len;
 }
 
 // ---------------------------------

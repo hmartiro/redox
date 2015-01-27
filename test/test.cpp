@@ -99,6 +99,8 @@ protected:
   void wait_for_replies() {
     unique_lock<mutex> ul(cmd_waiter_lock);
     cmd_waiter.wait(ul, [this] { return (cmd_count == 0); });
+    rdx.disconnect();
+    rdx.wait();
   };
 
   template<class ReplyT>
@@ -144,17 +146,16 @@ TEST_F(RedoxTest, Incr) {
 }
 
 TEST_F(RedoxTest, Delayed) {
-  Command<int>& c = rdx.commandLoop<int>("INCR redox_test:a", check(1), 0, 0.1);
+  rdx.commandDelayed<int>("INCR redox_test:a", check(1), 0.1);
   this_thread::sleep_for(chrono::milliseconds(150));
-  c.cancel();
   rdx.command<string>("GET redox_test:a", print_and_check(to_string(1)));
   wait_for_replies();
 }
 
 TEST_F(RedoxTest, Loop) {
   int count = 0;
-  int target_count = 100;
-  double dt = 0.001;
+  int target_count = 20;
+  double dt = 0.005;
   Command<int>& cmd = rdx.commandLoop<int>("INCR redox_test:a",
       [this, &count](Command<int>& c) {
         check(++count)(c);
@@ -164,7 +165,7 @@ TEST_F(RedoxTest, Loop) {
 
   double wait_time = dt * (target_count - 0.5);
   this_thread::sleep_for(std::chrono::duration<double>(wait_time));
-  cmd.cancel();
+  cmd.free();
 
   rdx.command<string>("GET redox_test:a", print_and_check(to_string(target_count)));
   wait_for_replies();

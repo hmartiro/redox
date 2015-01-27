@@ -57,30 +57,6 @@ public:
   static const int TIMEOUT = 5; // No reply, timed out
 
   /**
-  * Frees memory allocated by this command. Commands with free_memory = false
-  * must be freed by the user.
-  */
-  void free();
-
-  /**
-  * Cancels a repeating or delayed command.
-  */
-  void cancel() { canceled_ = true; }
-
-  /**
-  * This method returns once this command's callback has been invoked
-  * (or would have been invoked if there is none) since the last call
-  * to wait(). If it is the first call, then returns once the callback
-  * is invoked for the first time.
-  */
-  void wait();
-
-  /**
-  * Returns true if the command has been canceled.
-  */
-  bool canceled() const { return canceled_; }
-
-  /**
   * Returns the reply status of this command.
   */
   int status() const { return reply_status_; }
@@ -95,6 +71,24 @@ public:
   */
   ReplyT reply();
 
+  /**
+  * Tells the event loop to free memory for this command. The user is
+  * responsible for calling this on synchronous or looping commands,
+  * AKA when free_memory_ = false.
+  */
+  void free();
+
+  /**
+  * This method returns once this command's callback has been invoked
+  * (or would have been invoked if there is none) since the last call
+  * to wait(). If it is the first call, then returns once the callback
+  * is invoked for the first time.
+  */
+  void wait();
+
+  /**
+  * Returns the command string represented by this object.
+  */
   const std::string& cmd() const { return cmd_; };
 
   // Allow public access to constructed data
@@ -132,10 +126,6 @@ private:
   bool isExpectedReply(int type);
   bool isExpectedReply(int typeA, int typeB);
 
-  // Delete the provided Command object and deregister as an active
-  // command from its Redox instance.
-  static void freeCommand(Command<ReplyT>* c);
-
   // If needed, free the redisReply
   void freeReply();
 
@@ -158,9 +148,6 @@ private:
   // libev timer watcher
   ev_timer timer_;
   std::mutex timer_guard_;
-
-  // Make sure we don't free resources until details taken care of
-  std::mutex free_guard_;
 
   // Access the reply value only when not being changed
   std::mutex reply_guard_;

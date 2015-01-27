@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
   };
 
   auto subscribed = [](const string& topic) {
-
+    cout << "> Subscribed to " << topic << endl;
   };
 
   auto unsubscribed = [](const string& topic) {
@@ -50,6 +50,9 @@ int main(int argc, char *argv[]) {
   cout << "Total of messages sent in " << t << "s is " << count << endl;
   double msg_per_s = count / t;
   cout << "Messages per second: " << msg_per_s << endl;
+
+  rdx_sub.disconnect();
+  rdx_pub.disconnect();
 
   return 0;
 }

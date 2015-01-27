@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
 
   // Wait for t time, then stop the command.
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  for(auto& c : commands) c->cancel();
+  for(auto& c : commands) c->free();
 
   double t_elapsed = time_s() - t0;
   double actual_freq = (double)count / t_elapsed;
@@ -70,5 +70,7 @@ int main(int argc, char* argv[]) {
 
   cout << "Final value of counter: " << final_count << endl;
 
+  rdx.disconnect();
+  rdx.wait();
   return 0;
 }

@@ -128,7 +128,7 @@ public:
   /**
   * Synchronously runs a command, returning the Command object only once
   * a reply is received or there is an error. The user is responsible for
-  * calling the Command object's .free() method when done with it.
+  * calling .free() on the returned Command object.
   */
   template<class ReplyT>
   Command<ReplyT>& commandSync(const std::string& cmd);
@@ -142,7 +142,8 @@ public:
   /**
   * Creates an asynchronous command that is run every [repeat] seconds,
   * with the first one run in [after] seconds. If [repeat] is 0, the
-  * command is run only once.
+  * command is run only once. The user is responsible for calling .free()
+  * on the returned Command object.
   */
   template<class ReplyT>
   Command<ReplyT>& commandLoop(
@@ -150,6 +151,19 @@ public:
       const std::function<void(Command<ReplyT>&)>& callback,
       double repeat,
       double after = 0.0
+  );
+
+  /**
+  * Creates an asynchronous command that is run once after a given
+  * delay. The callback is invoked exactly once on a successful reply
+  * or error, and the Command object memory is automatically freed
+  * after the callback returns.
+  */
+  template<class ReplyT>
+  void commandDelayed(
+      const std::string& cmd,
+      const std::function<void(Command<ReplyT>&)>& callback,
+      double after
   );
 
   // ------------------------------------------------
@@ -237,7 +251,7 @@ private:
   static void processQueuedCommands(struct ev_loop* loop, ev_async* async, int revents);
 
   // Process the command with the given ID. Return true if the command had the
-  // templated type, and false if it was not in the map of that type.
+  // templated type, and false if it was not in the command map of that type.
   template<class ReplyT>
   bool processQueuedCommand(long id);
 
@@ -255,14 +269,29 @@ private:
   template<class ReplyT>
   static void commandCallback(redisAsyncContext* ctx, void* r, void* privdata);
 
+  // Free all commands in the commands_to_free_ queue
+  static void freeQueuedCommands(struct ev_loop* loop, ev_async* async, int revents);
+
+  // Free the command with the given ID. Return true if the command had the templated
+  // type, and false if it was not in the command map of that type.
+  template<class ReplyT>
+  bool freeQueuedCommand(long id);
+
   // Invoked by Command objects when they are completed. Removes them
   // from the command map.
   template<class ReplyT>
-  void remove_active_command(const long id) {
+  void deregisterCommand(const long id) {
     std::lock_guard<std::mutex> lg1(command_map_guard_);
     getCommandMap<ReplyT>().erase(id);
     commands_deleted_ += 1;
   }
+
+  // Free all commands remaining in the command maps
+  long freeAllCommands();
+
+  // Helper function for freeAllCommands to access a specific command map
+  template<class ReplyT>
+  long freeAllCommandsOfType();
 
   // ------------------------------------------------
   // Private members
@@ -282,6 +311,7 @@ private:
   // Asynchronous watchers
   ev_async watcher_command_; // For processing commands
   ev_async watcher_stop_; // For breaking the loop
+  ev_async watcher_free_; // For freeing commands
 
   // Track of Command objects allocated. Also provides unique Command IDs.
   std::atomic_long commands_created_ = {0};
@@ -323,10 +353,14 @@ private:
   std::queue<long> command_queue_;
   std::mutex queue_guard_;
 
+  // Commands IDs pending to be freed by the event loop
+  std::queue<long> commands_to_free_;
+  std::mutex free_queue_guard_;
+
   // Commands use this method to deregister themselves from Redox,
   // give it access to private members
   template<class ReplyT>
-  friend void Command<ReplyT>::freeCommand(Command<ReplyT>* c);
+  friend void Command<ReplyT>::free();
 };
 
 // ------------------------------------------------
@@ -379,7 +413,16 @@ Command<ReplyT>& Redox::commandLoop(
     double repeat,
     double after
 ) {
-  return createCommand(cmd, callback, repeat, after);
+  return createCommand(cmd, callback, repeat, after, false);
+}
+
+template<class ReplyT>
+void Redox::commandDelayed(
+    const std::string& cmd,
+    const std::function<void(Command<ReplyT>&)>& callback,
+    double after
+) {
+  createCommand(cmd, callback, 0, after, true);
 }
 
 template<class ReplyT>

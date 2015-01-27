@@ -31,6 +31,7 @@ int main(int argc, char *argv[]) {
 
   subscriber.psubscribe("news", got_message, subscribed, unsubscribed);
   subscriber.subscribe("sports", got_message, subscribed, unsubscribed);
+  subscriber.subscribe("other", got_message, subscribed, unsubscribed);
 
   this_thread::sleep_for(chrono::milliseconds(10));
 
@@ -40,6 +41,8 @@ int main(int argc, char *argv[]) {
 
   this_thread::sleep_for(chrono::milliseconds(10));
   subscriber.unsubscribe("sports");
+  this_thread::sleep_for(chrono::milliseconds(10));
+
   publisher.publish("sports", "\"UH OH\"");
   publisher.publish("news", "four");
 
@@ -52,5 +55,9 @@ int main(int argc, char *argv[]) {
 
   this_thread::sleep_for(chrono::milliseconds(10));
 
+  subscriber.disconnect();
+  subscriber.wait();
+  publisher.disconnect();
+  publisher.wait();
   return 0;
 }

@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
 
   // Wait for t time, then stop the command.
   this_thread::sleep_for(chrono::microseconds((int)(t*1e6)));
-  cmd.cancel();
+  cmd.free();
 
   long final_count = stol(rdx.get("simple_loop:count"));
 
@@ -65,5 +65,7 @@ int main(int argc, char* argv[]) {
 
   cout << "Final value of counter: " << final_count << endl;
 
+  rdx.disconnect();
+  rdx.wait();
   return 0;
 }

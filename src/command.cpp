@@ -51,8 +51,6 @@ void Command<ReplyT>::wait() {
 template<class ReplyT>
 void Command<ReplyT>::processReply(redisReply* r) {
 
-  free_guard_.lock();
-
   reply_obj_ = r;
 
   reply_guard_.lock();
@@ -66,60 +64,38 @@ void Command<ReplyT>::processReply(redisReply* r) {
   waiting_done_ = true;
   waiter_.notify_all();
 
-  // Allow free() method to free memory
-  if (!free_memory_) {
-    free_guard_.unlock();
-    return;
+  // Always free the reply object for repeating commands
+  if(repeat_ > 0) {
+    freeReply();
+
+  } else {
+
+    // User calls .free()
+    if (!free_memory_) return;
+
+    // Free non-repeating commands automatically
+    // once we receive expected replies
+    if(pending_ == 0) free();
   }
-
-  freeReply();
-
-  // Handle memory if all pending replies have arrived
-  if (pending_ == 0) {
-
-    // Just free non-repeating commands
-    if (repeat_ == 0) {
-      freeCommand(this);
-      return;
-
-      // Free repeating commands if timer is stopped
-    } else {
-      if ((long)(timer_.data) == 0) {
-        freeCommand(this);
-        return;
-      }
-    }
-  }
-
-  free_guard_.unlock();
 }
 
+// This is the only method in Command that has
+// access to private members of Redox
 template<class ReplyT>
 void Command<ReplyT>::free() {
 
-  free_guard_.lock();
-  freeReply();
-  free_guard_.unlock();
-
-  freeCommand(this);
+  lock_guard<mutex> lg(rdx_->free_queue_guard_);
+  rdx_->commands_to_free_.push(id_);
+  ev_async_send(rdx_->evloop_, &rdx_->watcher_free_);
 }
 
 template<class ReplyT>
 void Command<ReplyT>::freeReply() {
 
-  if (reply_obj_ == nullptr) {
-    logger_.error() << cmd_ << ": Attempting to double free reply object.";
-    return;
-  }
+  if (reply_obj_ == nullptr) return;
 
   freeReplyObject(reply_obj_);
   reply_obj_ = nullptr;
-}
-
-template<class ReplyT>
-void Command<ReplyT>::freeCommand(Command<ReplyT>* c) {
-  c->rdx_->template remove_active_command<ReplyT>(c->id_);
-  delete c;
 }
 
 /**
