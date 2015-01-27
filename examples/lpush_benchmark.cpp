@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
         cout << "Total time: " << t2 - t0 << "s" <<  endl;
         cout << "Result: " << (double)len / (t2-t0) << " commands/s" << endl;
 
-        rdx.disconnect();
+        rdx.stop();
       }
     });
   }

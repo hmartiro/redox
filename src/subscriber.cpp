@@ -43,6 +43,15 @@ Subscriber::~Subscriber() {
 
 }
 
+void Subscriber::disconnect() {
+  stop();
+  wait();
+}
+
+void Subscriber::wait() {
+  rdx_.wait();
+}
+
 // This is a fairly awkward way of shutting down, where
 // we pause to wait for subscriptions to happen, and then
 // unsubscribe from everything and wait for that to finish.
@@ -50,7 +59,7 @@ Subscriber::~Subscriber() {
 // a segfault in freeReplyObject() under redisAsyncDisconnect()
 // if we don't do this first.
 // TODO look at hiredis, ask them what causes the error
-void Subscriber::disconnect() {
+void Subscriber::stop() {
 
   this_thread::sleep_for(chrono::milliseconds(1000));
 
@@ -63,11 +72,8 @@ void Subscriber::disconnect() {
   unique_lock<mutex> ul(cv_unsub_guard_);
   cv_unsub_.wait(ul, [this] {
     std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
-    cout << "sub topic count : " << subscribed_topics_.size() << endl;
-    for(const string& topic : subscribed_topics_)
-      cout << "topic remaining: " << topic << endl;
-
-    return (subscribed_topics_.size() == 0); });
+    return (subscribed_topics_.size() == 0);
+  });
 
   unique_lock<mutex> ul2(cv_punsub_guard_);
   cv_punsub_.wait(ul, [this] {
@@ -78,7 +84,7 @@ void Subscriber::disconnect() {
   for(Command<redisReply*>* c : commands_)
     c->free();
 
-  rdx_.disconnect();
+  rdx_.stop();
 }
 
 // For debugging only
@@ -132,12 +138,10 @@ void Subscriber::subscribeBase(const string cmd_name, const string topic,
             num_pending_subs_--;
             if (sub_callback) sub_callback(topic);
           } else if (!strncmp(reply->element[0]->str, "uns", 3)) {
-            cout << "unsub from topic " << topic << endl;
             subscribed_topics_.erase(topic);
             if (unsub_callback) unsub_callback(topic);
             cv_unsub_.notify_all();
           } else if (!strncmp(reply->element[0]->str, "puns", 4)) {
-            cout << "punsub from topic " << topic << endl;
             psubscribed_topics_.erase(topic);
             if (unsub_callback) unsub_callback(topic);
             cv_punsub_.notify_all();
@@ -199,15 +203,12 @@ void Subscriber::psubscribe(const string topic,
 void Subscriber::unsubscribeBase(const string cmd_name, const string topic,
     function<void(const string&, int)> err_callback
 ) {
-  cout << "running " << cmd_name << " for " << topic << endl;
   rdx_.command<redisReply*>(cmd_name + " " + topic,
       [topic, err_callback](Command<redisReply*>& c) {
         if(!c.ok()) {
           if (err_callback) err_callback(topic, c.status());
           return;
         }
-
-        cout << "got unsub reply - " << c.cmd() << ": " << c.reply() << endl;
       }
   );
 }

@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
         for (const string& s : c.reply()) cout << s << " ";
         cout << endl;
       }
-      rdx.disconnect();
+      rdx.stop();
     }
   );
 

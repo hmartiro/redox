@@ -60,6 +60,11 @@ public:
   bool connect() { return rdx_.connect(); }
 
   /**
+  * Same as .stop() on a Redox instance.
+  */
+  void stop();
+
+  /**
   * Same as .disconnect() on a Redox instance.
   */
   void disconnect();
@@ -67,7 +72,7 @@ public:
   /**
   * Same as .wait() on a Redox instance.
   */
-  void wait() { rdx_.wait(); }
+  void wait();
 
   /**
   * Subscribe to a topic.

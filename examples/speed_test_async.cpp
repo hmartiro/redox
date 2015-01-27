@@ -66,6 +66,5 @@ int main(int argc, char* argv[]) {
   cout << "Final value of counter: " << final_count << endl;
 
   rdx.disconnect();
-  rdx.wait();
   return 0;
 }

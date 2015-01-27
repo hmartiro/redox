@@ -22,5 +22,6 @@ int main(int argc, char* argv[]) {
 
   cout << "key = \"occupation\", value = \"" << rdx.get("occupation") << "\"" << endl;
 
+  rdx.disconnect();
   return 0;
 }

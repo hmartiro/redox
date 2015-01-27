@@ -56,7 +56,7 @@ void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
     rdx->connect_state_ = DISCONNECTED;
   }
 
-  rdx->disconnect();
+  rdx->stop();
   rdx->connect_waiter_.notify_all();
   if(rdx->user_connection_callback_) rdx->user_connection_callback_(rdx->connect_state_);
 }
@@ -208,8 +208,13 @@ bool Redox::connect() {
 }
 
 void Redox::disconnect() {
+  stop();
+  wait();
+}
+
+void Redox::stop() {
   to_exit_ = true;
-  logger_.debug() << "disconnect() called, breaking event loop";
+  logger_.debug() << "stop() called, breaking event loop";
   ev_async_send(evloop_, &watcher_stop_);
 }
 
@@ -221,7 +226,7 @@ void Redox::wait() {
 Redox::~Redox() {
 
   // Bring down the event loop
-  disconnect();
+  stop();
 
   if(event_loop_thread_.joinable()) event_loop_thread_.join();
   ev_loop_destroy(evloop_);

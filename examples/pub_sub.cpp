@@ -55,8 +55,6 @@ int main(int argc, char *argv[]) {
   this_thread::sleep_for(chrono::milliseconds(10));
 
   subscriber.disconnect();
-  subscriber.wait();
   publisher.disconnect();
-  publisher.wait();
   return 0;
 }

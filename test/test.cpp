@@ -100,7 +100,6 @@ protected:
     unique_lock<mutex> ul(cmd_waiter_lock);
     cmd_waiter.wait(ul, [this] { return (cmd_count == 0); });
     rdx.disconnect();
-    rdx.wait();
   };
 
   template<class ReplyT>
@@ -178,12 +177,14 @@ TEST_F(RedoxTest, Loop) {
 TEST_F(RedoxTest, GetSetSync) {
   print_and_check_sync<string>(rdx.commandSync<string>("SET redox_test:a apple"), "OK");
   print_and_check_sync<string>(rdx.commandSync<string>("GET redox_test:a"), "apple");
+  rdx.disconnect();
 }
 
 TEST_F(RedoxTest, DeleteSync) {
   print_and_check_sync<string>(rdx.commandSync<string>("SET redox_test:a apple"), "OK");
   print_and_check_sync(rdx.commandSync<int>("DEL redox_test:a"), 1);
   check_sync(rdx.commandSync<nullptr_t>("GET redox_test:a"), nullptr);
+  rdx.disconnect();
 }
 
 TEST_F(RedoxTest, IncrSync) {
@@ -192,6 +193,7 @@ TEST_F(RedoxTest, IncrSync) {
     check_sync(rdx.commandSync<int>("INCR redox_test:a"), i+1);
   }
   print_and_check_sync(rdx.commandSync<string>("GET redox_test:a"), to_string(count));
+  rdx.disconnect();
 }
 
 // -------------------------------------------

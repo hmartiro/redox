@@ -42,6 +42,5 @@ int main(int argc, char* argv[]) {
   getter.join();
 
   rdx.disconnect();
-  rdx.wait();
   return 0;
 };

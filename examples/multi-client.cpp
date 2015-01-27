@@ -22,5 +22,9 @@ int main(int argc, char* argv[]) {
 
   cout << "key = occupation, value = \"" << rdx3.get("occupation") << "\"" << endl;
 
+  rdx1.disconnect();
+  rdx2.disconnect();
+  rdx3.disconnect();
+
   return 0;
 }

@@ -42,5 +42,6 @@ int main(int argc, char* argv[]) {
   else cerr << "Failed to get key! Status: " << c2.status() << endl;
   c2.free();
 
+  rdx.disconnect();
   return 0;
 }

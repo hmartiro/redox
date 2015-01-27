@@ -98,9 +98,15 @@ public:
   bool connect();
 
   /**
-  * Signal the event loop thread to disconnect from Redis and shut down.
+  * Disconnect from Redis, shut down the event loop, then return. A simple
+  * combination of .stop() and .wait().
   */
   void disconnect();
+
+  /**
+  * Signal the event loop thread to disconnect from Redis and shut down.
+  */
+  void stop();
 
   /**
   * Blocks until the event loop exits and disconnection is complete, then returns.
