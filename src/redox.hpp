@@ -1,5 +1,21 @@
 /**
-* Redis C++11 wrapper.
+* Redox - A modern, asynchronous, and wicked fast C++11 client for Redis
+*
+*    https://github.com/hmartiro/redox
+*
+* Copyright 2015 - Hayk Martirosyan <hayk.mart at gmail dot com>
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
 */
 
 #pragma once
@@ -43,7 +59,11 @@ public:
   static const int DISCONNECTED = 2;
   static const int CONNECT_ERROR = 3;
   static const int DISCONNECT_ERROR = 4;
-  
+
+  // ------------------------------------------------
+  // Core public API
+  // ------------------------------------------------
+
   /**
   * Initializes everything, connects over TCP to a Redis server.
   */
@@ -155,29 +175,14 @@ public:
   bool del(const std::string& key);
 
   /**
-  * Publish to a topic. All subscribers will be notified.
-  *
-  * pub_callback: invoked when successfully published
-  * err_callback: invoked on some error state
-  *
-  * // TODO
+  * Redis PUBLISH command wrapper - publish the given message to all subscribers.
+  * Non-blocking call.
   */
-  void publish(const std::string topic, const std::string msg,
-      std::function<void(const std::string&, const std::string&)> pub_callback = nullptr,
-      std::function<void(const std::string&, int)> err_callback = nullptr
-  );
+  void publish(const std::string& topic, const std::string& msg);
 
   // ------------------------------------------------
-  // Public only for Command class
+  // Public members
   // ------------------------------------------------
-
-  // Invoked by Command objects when they are completed
-  template<class ReplyT>
-  void remove_active_command(const long id) {
-    std::lock_guard<std::mutex> lg1(command_map_guard_);
-    getCommandMap<ReplyT>().erase(id);
-    commands_deleted_ += 1;
-  }
 
   // Hiredis context, left public to allow low-level access
   redisAsyncContext * ctx_;
@@ -194,6 +199,12 @@ public:
 
 private:
 
+  // ------------------------------------------------
+  // Private methods
+  // ------------------------------------------------
+
+  // One stop shop for creating commands. The base of all public
+  // methods that run commands.
   template<class ReplyT>
   Command<ReplyT>& createCommand(
       const std::string& cmd,
@@ -206,6 +217,56 @@ private:
   // Setup code for the constructors
   void init_ev();
   void init_hiredis();
+
+  // Callbacks invoked on server connection/disconnection
+  static void connectedCallback(const redisAsyncContext* c, int status);
+  static void disconnectedCallback(const redisAsyncContext* c, int status);
+
+  // Main event loop, run in a separate thread
+  void runEventLoop();
+
+  // Return the command map corresponding to the templated reply type
+  template<class ReplyT>
+  std::unordered_map<long, Command<ReplyT>*>& getCommandMap();
+
+  // Return the given Command from the relevant command map, or nullptr if not there
+  template<class ReplyT>
+  Command<ReplyT>* findCommand(long id);
+
+  // Send all commands in the command queue to the server
+  static void processQueuedCommands(struct ev_loop* loop, ev_async* async, int revents);
+
+  // Process the command with the given ID. Return true if the command had the
+  // templated type, and false if it was not in the map of that type.
+  template<class ReplyT>
+  bool processQueuedCommand(long id);
+
+  // Callback given to libev for a Command's timer watcher, to be processed in
+  // a deferred or looping state
+  template<class ReplyT>
+  static void submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int revents);
+
+  // Submit an asynchronous command to the Redox server. Return
+  // true if succeeded, false otherwise.
+  template<class ReplyT>
+  static bool submitToServer(Command<ReplyT>* c);
+
+  // Callback given to hiredis to invoke when a reply is received
+  template<class ReplyT>
+  static void commandCallback(redisAsyncContext* ctx, void* r, void* privdata);
+
+  // Invoked by Command objects when they are completed. Removes them
+  // from the command map.
+  template<class ReplyT>
+  void remove_active_command(const long id) {
+    std::lock_guard<std::mutex> lg1(command_map_guard_);
+    getCommandMap<ReplyT>().erase(id);
+    commands_deleted_ += 1;
+  }
+
+  // ------------------------------------------------
+  // Private members
+  // ------------------------------------------------
 
   // Manage connection state
   std::atomic_int connect_state_ = {NOT_YET_CONNECTED};
@@ -258,47 +319,27 @@ private:
   std::unordered_map<long, Command<std::unordered_set<std::string>>*> commands_unordered_set_string_;
   std::mutex command_map_guard_; // Guards access to all of the above
 
-  // Return the correct map from the above, based on the template specialization
+  // Command IDs pending to be sent to the server
+  std::queue<long> command_queue_;
+  std::mutex queue_guard_;
+
+  // Commands use this method to deregister themselves from Redox,
+  // give it access to private members
   template<class ReplyT>
-  std::unordered_map<long, Command<ReplyT>*>& getCommandMap();
-
-  // Return the given Command from the relevant command map, or nullptr if not there
-  template<class ReplyT>
-  Command<ReplyT>* findCommand(long id);
-
-  std::queue<long> command_queue;
-  std::mutex queue_guard;
-  static void proccessQueuedCommands(struct ev_loop* loop, ev_async* async, int revents);
-
-  template<class ReplyT>
-  bool proccessQueuedCommand(long id);
-
-  void runEventLoop();
-
-  // Callbacks invoked on server connection/disconnection
-  static void connectedCallback(const redisAsyncContext* c, int status);
-  static void disconnectedCallback(const redisAsyncContext* c, int status);
-
-  template<class ReplyT>
-  static void commandCallback(redisAsyncContext* ctx, void* r, void* privdata);
-
-  template<class ReplyT>
-  static bool submitToServer(Command<ReplyT>* c);
-
-  template<class ReplyT>
-  static void submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int revents);
-
+  friend void Command<ReplyT>::freeCommand(Command<ReplyT>* c);
 };
 
-// ---------------------------
+// ------------------------------------------------
+// Implementation of templated methods
+// ------------------------------------------------
 
 template<class ReplyT>
 Command<ReplyT>& Redox::createCommand(
-  const std::string& cmd,
-  const std::function<void(Command<ReplyT>&)>& callback,
-  double repeat,
-  double after,
-  bool free_memory
+    const std::string& cmd,
+    const std::function<void(Command<ReplyT>&)>& callback,
+    double repeat,
+    double after,
+    bool free_memory
 ) {
 
   if(!running_) {
@@ -306,19 +347,19 @@ Command<ReplyT>& Redox::createCommand(
   }
 
   commands_created_ += 1;
-  auto* c = new Command<ReplyT>(this, commands_created_, cmd,
-    callback, repeat, after, free_memory, logger_);
+  auto* c = new Command<ReplyT>(
+      this, commands_created_, cmd,
+      callback, repeat, after, free_memory, logger_
+  );
 
-  std::lock_guard<std::mutex> lg(queue_guard);
+  std::lock_guard<std::mutex> lg(queue_guard_);
   std::lock_guard<std::mutex> lg2(command_map_guard_);
 
   getCommandMap<ReplyT>()[c->id_] = c;
-  command_queue.push(c->id_);
+  command_queue_.push(c->id_);
 
   // Signal the event loop to process this command
   ev_async_send(evloop_, &watcher_command_);
-
-//  logger.debug() << "Created Command " << c->id << " at " << c;
 
   return *c;
 }

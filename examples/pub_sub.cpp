@@ -1,3 +1,7 @@
+/**
+* Redox example for basic pubsub usage.
+*/
+
 #include <stdlib.h>
 #include <iostream>
 #include "../src/redox.hpp"

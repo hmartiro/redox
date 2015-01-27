@@ -1,9 +1,24 @@
 /**
-* Redis C++11 wrapper.
+* Redox - A modern, asynchronous, and wicked fast C++11 client for Redis
+*
+*    https://github.com/hmartiro/redox
+*
+* Copyright 2015 - Hayk Martirosyan <hayk.mart at gmail dot com>
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
 */
 
 #include <signal.h>
-#include <string.h>
 #include "redox.hpp"
 
 using namespace std;
@@ -126,7 +141,7 @@ void Redox::runEventLoop() {
 
   // Set up asynchronous watcher which we signal every
   // time we add a command
-  ev_async_init(&watcher_command_, proccessQueuedCommands);
+  ev_async_init(&watcher_command_, processQueuedCommands);
   ev_async_start(evloop_, &watcher_command_);
 
   // Set up an async watcher to break the loop
@@ -231,10 +246,6 @@ void Redox::commandCallback(redisAsyncContext* ctx, void* r, void* privdata) {
   c->processReply(reply_obj);
 }
 
-/**
-* Submit an asynchronous command to the Redox server. Return
-* true if succeeded, false otherwise.
-*/
 template<class ReplyT>
 bool Redox::submitToServer(Command<ReplyT>* c) {
 
@@ -290,8 +301,6 @@ void Redox::submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int rev
 
   if(c->canceled()) {
 
-//    logger.info() << "Command " << c << " is completed, stopping event timer.";
-
     c->timer_guard_.lock();
     if((c->repeat_ != 0) || (c->after_ != 0))
       ev_timer_stop(loop, &c->timer_);
@@ -307,7 +316,7 @@ void Redox::submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int rev
 }
 
 template<class ReplyT>
-bool Redox::proccessQueuedCommand(long id) {
+bool Redox::processQueuedCommand(long id) {
 
   Command<ReplyT>* c = findCommand<ReplyT>(id);
   if(c == nullptr) return false;
@@ -318,7 +327,7 @@ bool Redox::proccessQueuedCommand(long id) {
   } else {
 
     c->timer_.data = (void*)c->id_;
-    ev_timer_init(&c->timer_, submitCommandCallback <ReplyT>, c->after_, c->repeat_);
+    ev_timer_init(&c->timer_, submitCommandCallback<ReplyT>, c->after_, c->repeat_);
     ev_timer_start(evloop_, &c->timer_);
 
     c->timer_guard_.unlock();
@@ -327,26 +336,26 @@ bool Redox::proccessQueuedCommand(long id) {
   return true;
 }
 
-void Redox::proccessQueuedCommands(struct ev_loop* loop, ev_async* async, int revents) {
+void Redox::processQueuedCommands(struct ev_loop* loop, ev_async* async, int revents) {
 
   Redox* rdx = (Redox*) ev_userdata(loop);
 
-  lock_guard<mutex> lg(rdx->queue_guard);
+  lock_guard<mutex> lg(rdx->queue_guard_);
 
-  while(!rdx->command_queue.empty()) {
+  while(!rdx->command_queue_.empty()) {
 
-    long id = rdx->command_queue.front();
-    rdx->command_queue.pop();
+    long id = rdx->command_queue_.front();
+    rdx->command_queue_.pop();
 
-    if(rdx->proccessQueuedCommand<redisReply*>(id)) {}
-    else if(rdx->proccessQueuedCommand<string>(id)) {}
-    else if(rdx->proccessQueuedCommand<char*>(id)) {}
-    else if(rdx->proccessQueuedCommand<int>(id)) {}
-    else if(rdx->proccessQueuedCommand<long long int>(id)) {}
-    else if(rdx->proccessQueuedCommand<nullptr_t>(id)) {}
-    else if(rdx->proccessQueuedCommand<vector<string>>(id)) {}
-    else if(rdx->proccessQueuedCommand<std::set<string>>(id)) {}
-    else if(rdx->proccessQueuedCommand<unordered_set<string>>(id)) {}
+    if(rdx->processQueuedCommand<redisReply*>(id)) {}
+    else if(rdx->processQueuedCommand<string>(id)) {}
+    else if(rdx->processQueuedCommand<char*>(id)) {}
+    else if(rdx->processQueuedCommand<int>(id)) {}
+    else if(rdx->processQueuedCommand<long long int>(id)) {}
+    else if(rdx->processQueuedCommand<nullptr_t>(id)) {}
+    else if(rdx->processQueuedCommand<vector<string>>(id)) {}
+    else if(rdx->processQueuedCommand<std::set<string>>(id)) {}
+    else if(rdx->processQueuedCommand<unordered_set<string>>(id)) {}
     else throw runtime_error("Command pointer not found in any queue!");
   }
 }
@@ -416,18 +425,8 @@ bool Redox::del(const string& key) {
   return commandSync("DEL " + key);
 }
 
-void Redox::publish(const string topic, const string msg,
-    function<void(const string&, const string&)> pub_callback,
-    function<void(const string&, int)> err_callback
-) {
-  command<redisReply*>("PUBLISH " + topic + " " + msg,
-      [topic, msg, err_callback, pub_callback](Command<redisReply*>& c) {
-        if(!c.ok()) {
-          if(err_callback) err_callback(topic, c.status());
-        }
-        if(pub_callback) pub_callback(topic, msg);
-      }
-  );
+void Redox::publish(const string& topic, const string& msg) {
+  command<redisReply*>("PUBLISH " + topic + " " + msg);
 }
 
 } // End namespace redis
