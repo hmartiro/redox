@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include "redox.hpp"
+#include "client.hpp"
 
 namespace redox {
 

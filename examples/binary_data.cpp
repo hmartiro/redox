@@ -5,7 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
-#include "../src/redox.hpp"
+#include "redox.hpp"
 
 using namespace std;
 using redox::Redox;

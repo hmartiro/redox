@@ -4,8 +4,7 @@
 
 #include <stdlib.h>
 #include <iostream>
-#include "../src/redox.hpp"
-#include "../src/subscriber.hpp"
+#include "redox.hpp"
 
 using namespace std;
 

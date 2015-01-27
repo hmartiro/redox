@@ -5,7 +5,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
-#include "../src/redox.hpp"
+#include "redox.hpp"
 
 using namespace std;
 using redox::Redox;

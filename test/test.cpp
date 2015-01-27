@@ -20,7 +20,7 @@
 
 #include <iostream>
 
-#include "../src/redox.hpp"
+#include "redox.hpp"
 #include "gtest/gtest.h"
 
 namespace {
