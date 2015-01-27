@@ -7,26 +7,27 @@ Redox is a C++ interface to the
 [Redis](http://redis.io/) key-value store that makes it easy to write applications
 that are both elegant and high-performance. Communication should be a means to an
 end, not something we spend a lot of time worrying about. Redox takes care of the
-details so you can move on to the interesting part.
+details so you can move on to the interesting part of your project.
 
 **Features:**
 
- * Runs Redis commands from strings, no explicit wrappers for the API
- * Callbacks can be lambdas, class methods, bind expressions - anything
-   [std::function](http://en.cppreference.com/w/cpp/utility/functional/function) can hold
- * Fully thread-safe - use one Redox object in multiple threads or multiple Redox objects in one thread
+ * Expressive asynchronous and synchronous API, templated by return value
+ * Callbacks can be lambdas, class methods, bind expressions, or any
+   [std::function](http://en.cppreference.com/w/cpp/utility/functional/function)
+ * Thread-safe - use one client in multiple threads or multiple clients in one
  * Automatic pipelining, even for synchronous calls from separate threads
- * Access to low-level reply objects when needed
- * 100% clean Valgrind reports
+ * Low-level access when needed
  * Accessible and robust error handling
  * Fast - developed for robotics applications
+ * 100% clean Valgrind reports
 
 Redox is built on top of
 [hiredis](https://github.com/redis/hiredis/) and
 [libev](http://manpages.ubuntu.com/manpages/raring/man3/ev.3.html). It uses only the
-asynchronous API of hiredis, even for synchronous commands.
+asynchronous API of hiredis, even for synchronous commands. There is no dependency on
+Boost or any other libraries.
 
-## Performance Benchmarks
+### Performance Benchmarks
 Benchmarks are given by averaging the results of five trials of the speed tests
 in `examples/` on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
 
@@ -41,15 +42,13 @@ average laptop. On a high-end laptop or PC, `speed_test_async_multi` usually top
 1 million commands per second. All results are slightly faster if over Unix sockets
 than TCP.
 
-## Build library from source
-Instructions provided are for Ubuntu, but Redox is fully platform-independent.
+## Install
+Instructions provided are for Ubuntu, but all components are platform-independent.
 
-Get the build environment:
+### Build library from source
+Get the build environment and dependencies:
 
     sudo apt-get install git cmake build-essential
-
-Get the dependencies:
-
     sudo apt-get install libhiredis-dev libev-dev
 
 Build the library:
@@ -58,12 +57,12 @@ Build the library:
     cmake ..
     make
 
-Install into the system (optional):
+Install into system directories (optional):
 
     sudo make install
 
-## Build examples and test suite
-To build the examples, use ccmake or the following:
+### Build examples and test suite
+Enable examples using ccmake or the following:
 
     cmake -Dexamples=ON ..
     make examples
