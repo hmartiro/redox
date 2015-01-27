@@ -24,6 +24,7 @@ set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 set(SRC_CORE
   ${SRC_DIR}/redox.cpp
   ${SRC_DIR}/command.cpp
+  ${SRC_DIR}/subscriber.cpp
 )
 
 set(SRC_LOGGER ${SRC_DIR}/utils/logger.cpp)

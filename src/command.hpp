@@ -54,7 +54,7 @@ public:
   /**
   * This method returns once this command's callback has been invoked
   * (or would have been invoked if there is none) since the last call
-  * to block(). If it is the first call, then returns once the callback
+  * to wait(). If it is the first call, then returns once the callback
   * is invoked for the first time.
   */
   void wait();

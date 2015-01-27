@@ -15,11 +15,11 @@ using redox::Command;
 int main(int argc, char* argv[]) {
 
   redox::Redox rdx; // Initialize Redox (default host/port)
-  if(!rdx.start()) return 1; // Start the event loop
+  if(!rdx.connect()) return 1; // Start the event loop
 
   rdx.del("mylist");
 
-  rdx.command_blocking("LPUSH mylist 1 2 3 4 5 6 7 8 9 10");
+  rdx.commandSync("LPUSH mylist 1 2 3 4 5 6 7 8 9 10");
 
   rdx.command<vector<string>>("LRANGE mylist 0 4",
     [](Command<vector<string>>& c){
@@ -46,10 +46,10 @@ int main(int argc, char* argv[]) {
         for (const string& s : c.reply()) cout << s << " ";
         cout << endl;
       }
-      rdx.stop_signal();
+      rdx.disconnect();
     }
   );
 
-  rdx.block(); // Shut down the event loop
+  rdx.wait();
   return 0;
 }

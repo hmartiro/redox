@@ -27,23 +27,25 @@
 
 namespace redox {
 
-// Default to a local Redis server
 static const std::string REDIS_DEFAULT_HOST = "localhost";
 static const int REDIS_DEFAULT_PORT = 6379;
 
-// Connection status
-static const int REDOX_NOT_YET_CONNECTED = 0;
-static const int REDOX_CONNECTED = 1;
-static const int REDOX_DISCONNECTED = 2;
-static const int REDOX_CONNECT_ERROR = 3;
-static const int REDOX_DISCONNECT_ERROR = 4;
-
+/**
+* Redox intro here.
+*/
 class Redox {
 
 public:
 
+  // Connection states
+  static const int NOT_YET_CONNECTED = 0;
+  static const int CONNECTED = 1;
+  static const int DISCONNECTED = 2;
+  static const int CONNECT_ERROR = 3;
+  static const int DISCONNECT_ERROR = 4;
+  
   /**
-  * Initialize everything, connect over TCP to a Redis server.
+  * Initializes everything, connects over TCP to a Redis server.
   */
   Redox(
     const std::string& host = REDIS_DEFAULT_HOST,
@@ -54,7 +56,7 @@ public:
   );
 
   /**
-  * Initialize everything, connect over unix sockets to a Redis server.
+  * Initializes everything, connects over unix sockets to a Redis server.
   */
   Redox(
     const std::string& path,
@@ -62,29 +64,29 @@ public:
     std::ostream& log_stream = std::cout,
     log::Level log_level = log::Info
   );
+
+  /**
+  * Disconnects from the Redis server, shuts down the event loop, and cleans up.
+  * Internally calls disconnect() and wait().
+  */
   ~Redox();
 
   /**
-  * Connect to Redis and start the event loop in a separate thread. Returns
-  * true if and when everything is ready to go, or false on failure.
+  * Connects to Redis and starts an event loop in a separate thread. Returns
+  * true once everything is ready, or false on failure.
   */
-  bool start();
+  bool connect();
 
   /**
-  * Signal the event loop to stop processing commands and shut down.
+  * Signal the event loop thread to disconnect from Redis and shut down.
   */
-  void stop_signal();
+  void disconnect();
 
   /**
-  * Wait for the event loop to exit, then return.
+  * Blocks until the event loop exits and disconnection is complete, then returns.
+  * Usually no need to call manually as it is handled in the destructor.
   */
-  void block();
-
-  /**
-  * Signal the event loop to stop, wait for all pending commands to be processed,
-  * and shut everything down. A simple combination of stop_signal() and block().
-  */
-  void stop();
+  void wait();
 
   /**
   * Asynchronously runs a command and invokes the callback when a reply is
@@ -101,7 +103,7 @@ public:
   /**
   * Asynchronously runs a command and ignores any errors or replies.
   */
-  void command(const std::string& cmd) { command<redisReply*>(cmd, nullptr); }
+  void command(const std::string& cmd);
 
   /**
   * Synchronously runs a command, returning the Command object only once
@@ -109,149 +111,61 @@ public:
   * calling the Command object's .free() method when done with it.
   */
   template<class ReplyT>
-  Command<ReplyT>& command_blocking(const std::string& cmd);
+  Command<ReplyT>& commandSync(const std::string& cmd);
 
   /**
   * Synchronously runs a command, returning only once a reply is received
-  * or there's an error. The return value is true if the command got a
-  * successful reply, and false if something went wrong.
+  * or there's an error. Returns true on successful reply, false on error.
   */
-  bool command_blocking(const std::string& cmd);
+  bool commandSync(const std::string& cmd);
 
+  /**
+  * Creates an asynchronous command that is run every [repeat] seconds,
+  * with the first one run in [after] seconds. If [repeat] is 0, the
+  * command is run only once.
+  */
   template<class ReplyT>
-  Command<ReplyT>& command_looping(
+  Command<ReplyT>& commandLoop(
       const std::string& cmd,
       const std::function<void(Command<ReplyT>&)>& callback,
       double repeat,
       double after = 0.0
   );
 
-  /**
-  * A wrapper around command() for synchronous use. Waits for a reply, populates it
-  * into the Command object, and returns when complete. The user can retrieve the
-  * results from the Command object - ok() will tell you if the call succeeded,
-  * status() will give the error code, and reply() will return the reply data if
-  * the call succeeded.
-  */
-//  template<class ReplyT>
-//  Command<ReplyT>& command_blocking(const std::string& cmd);
-
-  /**
-  * Return the total number of successful commands processed by this Redox instance.
-  */
-  long num_commands_processed() { return cmd_count; }
-
-  // Hiredis context, left public to allow low-level access
-  redisAsyncContext *ctx;
-
-  /**
-  * If connected, disconnect from the Redis server. Usually not necessary to invoke
-  * manually, as it is called in the destructor.
-  */
-  void disconnect();
-
   // ------------------------------------------------
   // Wrapper methods for convenience only
   // ------------------------------------------------
 
   /**
-  * Non-templated version of command in case you really don't care
-  * about the reply and just want to send something off.
-  */
-//  void command(const std::string& command);
-
-  /**
-  * Non-templated version of command_blocking in case you really don't
-  * care about the reply. Returns true if succeeded, false if error.
-  */
-//  bool command_blocking(const std::string& command);
-
-  /**
   * Redis GET command wrapper - return the value for the given key, or throw
-  * an exception if there is an error. Blocking call, of course.
+  * an exception if there is an error. Blocking call.
   */
   std::string get(const std::string& key);
 
   /**
   * Redis SET command wrapper - set the value for the given key. Return
-  * true if succeeded, false if error.
+  * true if succeeded, false if error. Blocking call.
   */
   bool set(const std::string& key, const std::string& value);
 
   /**
   * Redis DEL command wrapper - delete the given key. Return true if succeeded,
-  * false if error.
+  * false if error. Blocking call.
   */
   bool del(const std::string& key);
-
-  // ------------------------------------------------
-  // Publish/subscribe
-  // ------------------------------------------------
-
-  // This is activated when subscribe is called. When active,
-  // all commands other than [P]SUBSCRIBE, [P]UNSUBSCRIBE
-  // throw exceptions
-  std::atomic_bool pubsub_mode = {false};
-
-  /**
-  * Subscribe to a topic.
-  *
-  * msg_callback: invoked whenever a message is received.
-  * sub_callback: invoked when successfully subscribed
-  * err_callback: invoked on some error state
-  */
-  void subscribe(const std::string topic,
-    std::function<void(const std::string&, const std::string&)> msg_callback,
-    std::function<void(const std::string&)> sub_callback = nullptr,
-    std::function<void(const std::string&)> unsub_callback = nullptr,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
-
-  /**
-  * Subscribe to a topic with a pattern.
-  *
-  * msg_callback: invoked whenever a message is received.
-  * sub_callback: invoked when successfully subscribed
-  * err_callback: invoked on some error state
-  */
-  void psubscribe(const std::string topic,
-    std::function<void(const std::string&, const std::string&)> msg_callback,
-    std::function<void(const std::string&)> sub_callback = nullptr,
-    std::function<void(const std::string&)> unsub_callback = nullptr,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
 
   /**
   * Publish to a topic. All subscribers will be notified.
   *
   * pub_callback: invoked when successfully published
   * err_callback: invoked on some error state
+  *
+  * // TODO
   */
   void publish(const std::string topic, const std::string msg,
-    std::function<void(const std::string&, const std::string&)> pub_callback = nullptr,
-    std::function<void(const std::string&, int)> err_callback = nullptr
+      std::function<void(const std::string&, const std::string&)> pub_callback = nullptr,
+      std::function<void(const std::string&, int)> err_callback = nullptr
   );
-
-  /**
-  * Unsubscribe from a topic.
-  *
-  * err_callback: invoked on some error state
-  */
-  void unsubscribe(const std::string topic,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
-
-  /**
-  * Unsubscribe from a topic with a pattern.
-  *
-  * err_callback: invoked on some error state
-  */
-  void punsubscribe(const std::string topic,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
-
-  const std::set<std::string>& subscribed_topics() { return subscribed_topics_; }
-  const std::set<std::string>& psubscribed_topics() { return psubscribed_topics_; }
 
   // ------------------------------------------------
   // Public only for Command class
@@ -260,20 +174,23 @@ public:
   // Invoked by Command objects when they are completed
   template<class ReplyT>
   void remove_active_command(const long id) {
-    std::lock_guard<std::mutex> lg1(command_map_guard);
-    get_command_map<ReplyT>().erase(id);
-    commands_deleted += 1;
+    std::lock_guard<std::mutex> lg1(command_map_guard_);
+    getCommandMap<ReplyT>().erase(id);
+    commands_deleted_ += 1;
   }
 
+  // Hiredis context, left public to allow low-level access
+  redisAsyncContext * ctx_;
+
   // Redox server over TCP
-  const std::string host;
-  const int port;
+  const std::string host_;
+  const int port_;
 
   // Redox server over unix
-  const std::string path;
+  const std::string path_;
 
   // Logger
-  log::Logger logger;
+  log::Logger logger_;
 
 private:
 
@@ -291,107 +208,89 @@ private:
   void init_hiredis();
 
   // Manage connection state
-  std::atomic_int connect_state = {REDOX_NOT_YET_CONNECTED};
-  std::mutex connect_lock;
-  std::condition_variable connect_waiter;
+  std::atomic_int connect_state_ = {NOT_YET_CONNECTED};
+  std::mutex connect_lock_;
+  std::condition_variable connect_waiter_;
 
   // User connect/disconnect callbacks
-  std::function<void(int)> user_connection_callback;
+  std::function<void(int)> user_connection_callback_;
 
   // Dynamically allocated libev event loop
-  struct ev_loop* evloop;
+  struct ev_loop* evloop_;
 
   // Asynchronous watchers
-  ev_async async_w; // For processing commands
-  ev_async async_stop; // For breaking the loop
-
-  // Number of commands processed
-  std::atomic_long cmd_count = {0};
+  ev_async watcher_command_; // For processing commands
+  ev_async watcher_stop_; // For breaking the loop
 
   // Track of Command objects allocated. Also provides unique Command IDs.
-  std::atomic_long commands_created = {0};
-  std::atomic_long commands_deleted = {0};
+  std::atomic_long commands_created_ = {0};
+  std::atomic_long commands_deleted_ = {0};
 
   // Separate thread to have a non-blocking event loop
-  std::thread event_loop_thread;
+  std::thread event_loop_thread_;
 
   // Variable and CV to know when the event loop starts running
-  std::atomic_bool running = {false};
-  std::mutex running_waiter_lock;
-  std::condition_variable running_waiter;
+  std::atomic_bool running_ = {false};
+  std::mutex running_waiter_lock_;
+  std::condition_variable running_waiter_;
 
   // Variable and CV to know when the event loop stops running
-  std::atomic_bool to_exit = {false}; // Signal to exit
-  std::atomic_bool exited = {false}; // Event thread exited
-  std::mutex exit_waiter_lock;
-  std::condition_variable exit_waiter;
+  std::atomic_bool to_exit_ = {false}; // Signal to exit
+  std::atomic_bool exited_ = {false}; // Event thread exited
+  std::mutex exit_waiter_lock_;
+  std::condition_variable exit_waiter_;
 
   // Maps of each Command, fetchable by the unique ID number
-  std::unordered_map<long, Command<redisReply*>*> commands_redis_reply;
-  std::unordered_map<long, Command<std::string>*> commands_string_r;
-  std::unordered_map<long, Command<char*>*> commands_char_p;
-  std::unordered_map<long, Command<int>*> commands_int;
-  std::unordered_map<long, Command<long long int>*> commands_long_long_int;
-  std::unordered_map<long, Command<std::nullptr_t>*> commands_null;
-  std::unordered_map<long, Command<std::vector<std::string>>*> commands_vector_string;
-  std::unordered_map<long, Command<std::set<std::string>>*> commands_set_string;
-  std::unordered_map<long, Command<std::unordered_set<std::string>>*> commands_unordered_set_string;
-  std::mutex command_map_guard; // Guards access to all of the above
+  // In C++14, member variable templates will replace all of these types
+  // with a single templated declaration
+  // ---------
+  // template<class ReplyT>
+  // std::unordered_map<long, Command<ReplyT>*> commands_;
+  // ---------
+  std::unordered_map<long, Command<redisReply*>*> commands_redis_reply_;
+  std::unordered_map<long, Command<std::string>*> commands_string_;
+  std::unordered_map<long, Command<char*>*> commands_char_p_;
+  std::unordered_map<long, Command<int>*> commands_int_;
+  std::unordered_map<long, Command<long long int>*> commands_long_long_int_;
+  std::unordered_map<long, Command<std::nullptr_t>*> commands_null_;
+  std::unordered_map<long, Command<std::vector<std::string>>*> commands_vector_string_;
+  std::unordered_map<long, Command<std::set<std::string>>*> commands_set_string_;
+  std::unordered_map<long, Command<std::unordered_set<std::string>>*> commands_unordered_set_string_;
+  std::mutex command_map_guard_; // Guards access to all of the above
 
   // Return the correct map from the above, based on the template specialization
   template<class ReplyT>
-  std::unordered_map<long, Command<ReplyT>*>& get_command_map();
+  std::unordered_map<long, Command<ReplyT>*>& getCommandMap();
 
   // Return the given Command from the relevant command map, or nullptr if not there
   template<class ReplyT>
-  Command<ReplyT>* find_command(long id);
+  Command<ReplyT>* findCommand(long id);
 
   std::queue<long> command_queue;
   std::mutex queue_guard;
-  static void process_queued_commands(struct ev_loop* loop, ev_async* async, int revents);
+  static void proccessQueuedCommands(struct ev_loop* loop, ev_async* async, int revents);
 
   template<class ReplyT>
-  bool process_queued_command(long id);
+  bool proccessQueuedCommand(long id);
 
-  void run_event_loop();
+  void runEventLoop();
 
   // Callbacks invoked on server connection/disconnection
-  static void connected_callback(const redisAsyncContext *c, int status);
-  static void disconnected_callback(const redisAsyncContext *c, int status);
+  static void connectedCallback(const redisAsyncContext* c, int status);
+  static void disconnectedCallback(const redisAsyncContext* c, int status);
 
   template<class ReplyT>
-  static void command_callback(redisAsyncContext *ctx, void *r, void *privdata);
+  static void commandCallback(redisAsyncContext* ctx, void* r, void* privdata);
 
   template<class ReplyT>
-  static bool submit_to_server(Command<ReplyT>* c);
+  static bool submitToServer(Command<ReplyT>* c);
 
   template<class ReplyT>
-  static void submit_command_callback(struct ev_loop* loop, ev_timer* timer, int revents);
+  static void submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int revents);
 
-  void deny_non_pubsub(const std::string& cmd);
-
-  // Base for subscribe and psubscribe
-  void subscribe_raw(const std::string cmd_name, const std::string topic,
-    std::function<void(const std::string&, const std::string&)> msg_callback,
-    std::function<void(const std::string&)> sub_callback = nullptr,
-    std::function<void(const std::string&)> unsub_callback = nullptr,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
-
-  // Base for unsubscribe and punsubscribe
-  void unsubscribe_raw(const std::string cmd_name, const std::string topic,
-    std::function<void(const std::string&, int)> err_callback = nullptr
-  );
-
-  // Keep track of topics because we can only unsubscribe
-  // from subscribed topics and punsubscribe from
-  // psubscribed topics, or hiredis leads to segfaults
-  std::set<std::string> subscribed_topics_;
-  std::set<std::string> psubscribed_topics_;
 };
 
 // ---------------------------
-
 
 template<class ReplyT>
 Command<ReplyT>& Redox::createCommand(
@@ -402,27 +301,22 @@ Command<ReplyT>& Redox::createCommand(
   bool free_memory
 ) {
 
-  if(!running) {
-    throw std::runtime_error("[ERROR] Need to start Redox before running commands!");
+  if(!running_) {
+    throw std::runtime_error("[ERROR] Need to connect Redox before running commands!");
   }
 
-  // Block if pubsub mode
-  if(pubsub_mode) {
-    deny_non_pubsub(cmd);
-  }
-
-  commands_created += 1;
-  auto* c = new Command<ReplyT>(this, commands_created, cmd,
-    callback, repeat, after, free_memory, logger);
+  commands_created_ += 1;
+  auto* c = new Command<ReplyT>(this, commands_created_, cmd,
+    callback, repeat, after, free_memory, logger_);
 
   std::lock_guard<std::mutex> lg(queue_guard);
-  std::lock_guard<std::mutex> lg2(command_map_guard);
+  std::lock_guard<std::mutex> lg2(command_map_guard_);
 
-  get_command_map<ReplyT>()[c->id_] = c;
+  getCommandMap<ReplyT>()[c->id_] = c;
   command_queue.push(c->id_);
 
   // Signal the event loop to process this command
-  ev_async_send(evloop, &async_w);
+  ev_async_send(evloop_, &watcher_command_);
 
 //  logger.debug() << "Created Command " << c->id << " at " << c;
 
@@ -438,7 +332,7 @@ void Redox::command(
 }
 
 template<class ReplyT>
-Command<ReplyT>& Redox::command_looping(
+Command<ReplyT>& Redox::commandLoop(
     const std::string& cmd,
     const std::function<void(Command<ReplyT>&)>& callback,
     double repeat,
@@ -448,7 +342,7 @@ Command<ReplyT>& Redox::command_looping(
 }
 
 template<class ReplyT>
-Command<ReplyT>& Redox::command_blocking(const std::string& cmd) {
+Command<ReplyT>& Redox::commandSync(const std::string& cmd) {
   auto& c = createCommand<ReplyT>(cmd, nullptr, 0, 0, false);
   c.wait();
   return c;

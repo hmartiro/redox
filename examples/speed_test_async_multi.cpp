@@ -20,7 +20,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
-  if(!rdx.start()) return 1;
+  if(!rdx.connect()) return 1;
 
   if(rdx.set("simple_loop:count", "0")) {
     cout << "Reset the counter to zero." << endl;
@@ -43,15 +43,15 @@ int main(int argc, char* argv[]) {
 
   vector<Command<int>*> commands;
   for(int i = 0; i < parallel; i++) {
-    commands.push_back(&rdx.command_looping<int>(
-      cmd_str,
+    commands.push_back(&rdx.commandLoop<int>(
+        cmd_str,
         [&count, &rdx](Command<int>& c) {
-          if(!c.ok()) {
+          if (!c.ok()) {
             cerr << "Bad reply: " << c.status() << endl;
           }
           count++;
         },
-      dt
+        dt
     ));
   }
 
@@ -64,8 +64,6 @@ int main(int argc, char* argv[]) {
 
   // Get the final value of the counter
   long final_count = stol(rdx.get("simple_loop:count"));
-
-  rdx.stop();
 
   cout << "Sent " << count << " commands in " << t_elapsed << "s, "
        << "that's " << actual_freq << " commands/s." << endl;

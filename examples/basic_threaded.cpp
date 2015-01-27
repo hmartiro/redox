@@ -15,7 +15,7 @@ redox::Redox rdx = {"localhost", 6379};
 
 int main(int argc, char* argv[]) {
 
-  if(!rdx.start()) return 1;
+  if(!rdx.connect()) return 1;
 
   thread setter([]() {
     for(int i = 0; i < 5000; i++) {
@@ -40,8 +40,6 @@ int main(int argc, char* argv[]) {
 
   setter.join();
   getter.join();
-
-  rdx.stop();
 
   return 0;
 };

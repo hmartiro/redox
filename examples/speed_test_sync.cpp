@@ -18,9 +18,9 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"localhost", 6379};
-  if(!rdx.start()) return 1;
+  if(!rdx.connect()) return 1;
 
-  if(rdx.command_blocking("SET simple_loop:count 0")) {
+  if(rdx.commandSync("SET simple_loop:count 0")) {
     cout << "Reset the counter to zero." << endl;
   } else {
     cerr << "Failed to reset counter." << endl;
@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
   int count = 0;
 
   while(time_s() < t_end) {
-    Command<int>& c = rdx.command_blocking<int>(cmd_str);
+    Command<int>& c = rdx.commandSync<int>(cmd_str);
     if(!c.ok()) cerr << "Bad reply, code: " << c.status() << endl;
     c.free();
     count++;
@@ -47,8 +47,6 @@ int main(int argc, char* argv[]) {
   double actual_freq = (double)count / t_elapsed;
 
   long final_count = stol(rdx.get("simple_loop:count"));
-
-  rdx.stop();
 
   cout << "Sent " << count << " commands in " << t_elapsed << "s, "
        << "that's " << actual_freq << " commands/s." << endl;

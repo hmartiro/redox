@@ -19,9 +19,9 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {"/var/run/redis/redis.sock", nullptr};
-  if(!rdx.start()) return 1;
+  if(!rdx.connect()) return 1;
 
-  bool status = rdx.command_blocking("SET simple_loop:count 0");
+  bool status = rdx.commandSync("SET simple_loop:count 0");
   if(status) {
     cout << "Reset the counter to zero." << endl;
   } else {
@@ -40,10 +40,10 @@ int main(int argc, char* argv[]) {
   double t0 = time_s();
   atomic_int count(0);
 
-  Command<int>& cmd = rdx.command_looping<int>(
+  Command<int>& cmd = rdx.commandLoop<int>(
       cmd_str,
       [&count, &rdx](Command<int>& c) {
-        if(!c.ok()) {
+        if (!c.ok()) {
           cerr << "Bad reply: " << c.status() << endl;
         }
         count++;
@@ -65,6 +65,5 @@ int main(int argc, char* argv[]) {
 
   cout << "Final value of counter: " << final_count << endl;
 
-  rdx.stop();
   return 0;
 }

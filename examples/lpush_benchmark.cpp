@@ -17,7 +17,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   redox::Redox rdx;
-  if(!rdx.start()) return 1;
+  if(!rdx.connect()) return 1;
 
   rdx.del("test");
 
@@ -43,15 +43,12 @@ int main(int argc, char* argv[]) {
         cout << "Total time: " << t2 - t0 << "s" <<  endl;
         cout << "Result: " << (double)len / (t2-t0) << " commands/s" << endl;
 
-        rdx.stop_signal();
+        rdx.disconnect();
       }
     });
   }
   t1 = time_s();
 
-  rdx.block();
-
-  cout << "Commands processed: " << rdx.num_commands_processed() << endl;
-
+  rdx.wait();
   return 0;
 };

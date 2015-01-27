@@ -1,9 +1,11 @@
 #include <iostream>
 #include "../src/redox.hpp"
+#include "../src/subscriber.hpp"
 
 using namespace std;
 using redox::Redox;
 using redox::Command;
+using redox::Subscriber;
 
 double time_s() {
   unsigned long ms = chrono::system_clock::now().time_since_epoch() / chrono::microseconds(1);
@@ -13,10 +15,10 @@ double time_s() {
 int main(int argc, char *argv[]) {
 
   Redox rdx_pub;
-  Redox rdx_sub;
+  Subscriber rdx_sub;
 
-  if(!rdx_pub.start()) return 1;
-  if(!rdx_sub.start()) return 1;
+  if(!rdx_pub.connect()) return 1;
+  if(!rdx_sub.connect()) return 1;
 
   atomic_int count(0);
   auto got_message = [&count](const string& topic, const string& msg) {
@@ -41,12 +43,13 @@ int main(int argc, char *argv[]) {
     rdx_pub.publish("speedtest", "hello");
     t1 = time_s();
   }
-  this_thread::sleep_for(chrono::milliseconds(1000));
-  rdx_pub.stop();
-  rdx_sub.stop();
+
+  this_thread::sleep_for(chrono::milliseconds(10));
 
   double t = t1 - t0;
   cout << "Total of messages sent in " << t << "s is " << count << endl;
   double msg_per_s = count / t;
   cout << "Messages per second: " << msg_per_s << endl;
+
+  return 0;
 }
