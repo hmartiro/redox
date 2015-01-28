@@ -493,7 +493,7 @@ bool Redox::commandSync(const string& cmd) {
 
 string Redox::get(const string& key) {
 
-  Command<char*>& c = commandSync<char*>("GET " + key);
+  Command<char*>& c = commandSync<char*>("GET \"" + key + '"');
   if(!c.ok()) {
     throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c.status()));
   }
@@ -503,15 +503,15 @@ string Redox::get(const string& key) {
 };
 
 bool Redox::set(const string& key, const string& value) {
-  return commandSync("SET " + key + " " + value);
+  return commandSync("SET " + key + " \"" + value + '"');
 }
 
 bool Redox::del(const string& key) {
-  return commandSync("DEL " + key);
+  return commandSync("DEL \"" + key + '"');
 }
 
 void Redox::publish(const string& topic, const string& msg) {
-  command<redisReply*>("PUBLISH " + topic + " " + msg);
+  command<redisReply*>("PUBLISH " + topic + " \"" + msg + '"');
 }
 
 } // End namespace redis
