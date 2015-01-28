@@ -18,6 +18,7 @@ details so you can move on to the interesting part of your project.
  * Automatic pipelining, even for synchronous calls from separate threads
  * Low-level access when needed
  * Accessible and robust error handling
+ * Logs to any ostream at a user-controllable log level
  * Fast - developed for robotics applications
  * 100% clean Valgrind reports
 
