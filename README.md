@@ -33,9 +33,9 @@ in `examples/` on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
 
 Local Redis server, TCP connection:
 
- * 100 command loops (`speed_test_async_multi`): **710,014 commands/s**
- * One command loop (`speed_test_async`): **195,159 commands/s**
- * Looped synchronous command (`speed_test_sync`): **28,609 commands/s**
+ * 100 command loops (`speed_test_async_multi`): **685,249 commands/s**
+ * One command loop (`speed_test_async`): **195,439 commands/s**
+ * Looped synchronous command (`speed_test_sync`): **23,012 commands/s**
 
 Results are comparable to that of an average laptop. On a high-end machine,
 `speed_test_async_multi` usually tops 1,000,000 commands/s.
