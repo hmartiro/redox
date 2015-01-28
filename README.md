@@ -264,3 +264,7 @@ then:
     cmake -Dtests=ON ..
     make test_redox
     ./test_redox
+
+## Contributing
+Redox is in its early stages and I am looking for feedback and contributors to make
+it easier, faster, and more robust. Open issues on GitHub or message me directly.
