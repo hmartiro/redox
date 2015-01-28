@@ -3,15 +3,16 @@
 */
 
 #include <iostream>
-#include "redox.hpp"
+#include <redox.hpp>
 
 using namespace std;
 using redox::Redox;
 using redox::Command;
+using redox::Subscriber;
 
 int main(int argc, char* argv[]) {
 
-  Redox rdx = {"localhost", 6379, nullptr, cout, redox::log::Info}; // Initialize Redox
+  Redox rdx = {"localhost", 6379}; // Initialize Redox
 
   if(!rdx.connect()) return 1; // Start the event loop
 
@@ -22,6 +23,5 @@ int main(int argc, char* argv[]) {
 
   cout << "key = \"occupation\", value = \"" << rdx.get("occupation") << "\"" << endl;
 
-  rdx.disconnect();
   return 0;
 }
