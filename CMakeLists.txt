@@ -46,7 +46,8 @@ set(INC_WRAPPER ${CMAKE_SOURCE_DIR}/include/redox.hpp)
 set(SRC_ALL ${SRC_CORE} ${SRC_UTILS})
 set(INC_ALL ${INC_CORE} ${INC_UTILS} ${INC_WRAPPER})
 
-include_directories(${INC_DIR} ${INC_DIR/redox})
+include_directories(${INC_DIR})
+#include_directories(${INC_DIR/redox})
 
 # Dependent libraries - you may have to change
 # pthread to whatever C++11 threads depends on
