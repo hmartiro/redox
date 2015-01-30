@@ -53,9 +53,15 @@ void Command<ReplyT>::processReply(redisReply* r) {
 
   reply_obj_ = r;
 
-  reply_guard_.lock();
-  parseReplyObject();
-  reply_guard_.unlock();
+  if(reply_obj_ == nullptr) {
+    reply_status_ = ERROR_REPLY;
+    logger_.error() << "Received null redisReply* from hiredis.";
+    Redox::disconnectedCallback(rdx_->ctx_, REDIS_ERR);
+
+  } else {
+    lock_guard<mutex> lg(reply_guard_);
+    parseReplyObject();
+  }
 
   invoke();
 

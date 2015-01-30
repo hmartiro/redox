@@ -272,4 +272,5 @@ then:
 Redox is in its early stages and I am looking for feedback and contributors to make
 it easier, faster, and more robust. Open issues on GitHub or message me directly.
 
-Redox is not currently recommended for production use. It has no support for features like connection pooling, sentinels, clusters, etc. Feel free to provide them!
+Redox is not currently recommended for production use. It has no support for features like
+connection pooling, sentinels, clusters, etc. Feel free to provide them!

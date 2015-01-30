@@ -368,6 +368,10 @@ private:
   // give it access to private members
   template<class ReplyT>
   friend void Command<ReplyT>::free();
+
+  // Access to call disconnectedCallback
+  template<class ReplyT>
+  friend void Command<ReplyT>::processReply(redisReply* r);
 };
 
 // ------------------------------------------------

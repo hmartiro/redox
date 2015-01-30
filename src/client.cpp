@@ -136,7 +136,7 @@ void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
   Redox* rdx = (Redox*) ctx->data;
 
   if (status != REDIS_OK) {
-    rdx->logger_.error() << "Could not disconnect from Redis: " << ctx->errstr;
+    rdx->logger_.error() << "Disconnected from Redis on error: " << ctx->errstr;
     rdx->connect_state_ = DISCONNECT_ERROR;
   } else {
     rdx->logger_.info() << "Disconnected from Redis as planned.";

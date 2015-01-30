@@ -75,7 +75,7 @@ const tm *Logger::getLocalTime() {
 
 void Logger::log(Level l, std::string oMessage) {
   const static char *LevelStr[] = {
-    "[Trace]  ", "[Debug]  ", "[Info]   ", "[Warning]", "[Error]  ", "[Severe] "
+    "[Trace]  ", "[Debug]  ", "[Info]   ", "[Warning]", "[Error]  ", "[Fatal]  "
   };
 
   m_lock.lock();
