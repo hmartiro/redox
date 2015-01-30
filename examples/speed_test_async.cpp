@@ -18,8 +18,8 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  Redox rdx = {"/var/run/redis/redis.sock", nullptr};
-  if(!rdx.connect()) return 1;
+  Redox rdx;
+  if(!rdx.connect_unix("/var/run/redis/redis.sock")) return 1;
 
   bool status = rdx.commandSync("SET simple_loop:count 0");
   if(status) {

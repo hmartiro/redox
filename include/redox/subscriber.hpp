@@ -29,22 +29,9 @@ class Subscriber {
 public:
 
   /**
-  * Initializes everything, connects over TCP to a Redis server.
+  * Constructor. Same as Redox.
   */
   Subscriber(
-      const std::string& host = REDIS_DEFAULT_HOST,
-      const int port = REDIS_DEFAULT_PORT,
-      std::function<void(int)> connection_callback = nullptr,
-      std::ostream& log_stream = std::cout,
-      log::Level log_level = log::Warning
-  );
-
-  /**
-  * Initializes everything, connects over unix sockets to a Redis server.
-  */
-  Subscriber(
-      const std::string& path,
-      std::function<void(int)> connection_callback,
       std::ostream& log_stream = std::cout,
       log::Level log_level = log::Warning
   );
@@ -57,7 +44,21 @@ public:
   /**
   * Same as .connect() on a Redox instance.
   */
-  bool connect() { return rdx_.connect(); }
+  bool connect(
+      const std::string& host = REDIS_DEFAULT_HOST,
+      const int port = REDIS_DEFAULT_PORT,
+      std::function<void(int)> connection_callback = nullptr) {
+    return rdx_.connect(host, port, connection_callback);
+  }
+
+  /**
+  * Same as .connect_unix() on a Redox instance.
+  */
+  bool connect_unix(
+      const std::string& path = REDIS_DEFAULT_PATH,
+      std::function<void(int)> connection_callback = nullptr) {
+    return rdx_.connect_unix(path, connection_callback);
+  }
 
   /**
   * Same as .stop() on a Redox instance.

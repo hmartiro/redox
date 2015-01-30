@@ -25,6 +25,93 @@ using namespace std;
 
 namespace redox {
 
+Redox::Redox(
+    ostream& log_stream,
+    log::Level log_level
+) : logger_(log_stream, log_level) {}
+
+bool Redox::connect(
+    const std::string& host, const int port,
+    std::function<void(int)> connection_callback
+) {
+
+  host_ = host;
+  port_ = port;
+  user_connection_callback_ = connection_callback;
+
+  if(!init_ev()) return false;
+
+  // Connect over TCP
+  ctx_ = redisAsyncConnect(host.c_str(), port);
+
+  if(!init_hiredis()) return false;
+
+  event_loop_thread_ = thread([this] { runEventLoop(); });
+
+  // Block until connected and running the event loop, or until
+  // a connection error happens and the event loop exits
+  unique_lock<mutex> ul(running_waiter_lock_);
+  running_waiter_.wait(ul, [this] {
+    return running_.load() || connect_state_ == CONNECT_ERROR;
+  });
+
+  // Return if succeeded
+  return connect_state_ == CONNECTED;
+}
+
+bool Redox::connect_unix(
+    const std::string& path,
+    std::function<void(int)> connection_callback
+) {
+
+  path_ = path;
+  user_connection_callback_ = connection_callback;
+
+  if(!init_ev()) return false;
+
+  // Connect over unix sockets
+  ctx_ = redisAsyncConnectUnix(path.c_str());
+
+  if(!init_hiredis()) return false;
+
+  event_loop_thread_ = thread([this] { runEventLoop(); });
+
+  // Block until connected and running the event loop, or until
+  // a connection error happens and the event loop exits
+  unique_lock<mutex> ul(running_waiter_lock_);
+  running_waiter_.wait(ul, [this] {
+    return running_.load() || connect_state_ == CONNECT_ERROR;
+  });
+
+  // Return if succeeded
+  return connect_state_ == CONNECTED;
+}
+
+void Redox::disconnect() {
+  stop();
+  wait();
+}
+
+void Redox::stop() {
+  to_exit_ = true;
+  logger_.debug() << "stop() called, breaking event loop";
+  ev_async_send(evloop_, &watcher_stop_);
+}
+
+void Redox::wait() {
+  unique_lock<mutex> ul(exit_waiter_lock_);
+  exit_waiter_.wait(ul, [this] { return exited_.load(); });
+}
+
+Redox::~Redox() {
+
+  // Bring down the event loop
+  stop();
+
+  if(event_loop_thread_.joinable()) event_loop_thread_.join();
+  ev_loop_destroy(evloop_);
+}
+
 void Redox::connectedCallback(const redisAsyncContext* ctx, int status) {
 
   Redox* rdx = (Redox*) ctx->data;
@@ -61,13 +148,14 @@ void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
   if(rdx->user_connection_callback_) rdx->user_connection_callback_(rdx->connect_state_);
 }
 
-void Redox::init_ev() {
+bool Redox::init_ev() {
   signal(SIGPIPE, SIG_IGN);
   evloop_ = ev_loop_new(EVFLAG_AUTO);
   ev_set_userdata(evloop_, (void*)this); // Back-reference
+  return true;
 }
 
-void Redox::init_hiredis() {
+bool Redox::init_hiredis() {
 
   ctx_->data = (void*)this; // Back-reference
 
@@ -75,7 +163,7 @@ void Redox::init_hiredis() {
     logger_.error() << "Could not create a hiredis context: " << ctx_->errstr;
     connect_state_ = CONNECT_ERROR;
     connect_waiter_.notify_all();
-    return;
+    return false;
   }
 
   // Attach event loop to hiredis
@@ -84,39 +172,8 @@ void Redox::init_hiredis() {
   // Set the callbacks to be invoked on server connection/disconnection
   redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback);
   redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback);
-}
 
-Redox::Redox(
-  const string& host, const int port,
-  function<void(int)> connection_callback,
-  ostream& log_stream,
-  log::Level log_level
-) : host_(host), port_(port),
-    logger_(log_stream, log_level),
-    user_connection_callback_(connection_callback) {
-
-  init_ev();
-
-  // Connect over TCP
-  ctx_ = redisAsyncConnect(host.c_str(), port);
-
-  init_hiredis();
-}
-
-Redox::Redox(
-  const string& path,
-  function<void(int)> connection_callback,
-  ostream& log_stream,
-  log::Level log_level
-) : host_(), port_(), path_(path), logger_(log_stream, log_level),
-    user_connection_callback_(connection_callback) {
-
-  init_ev();
-
-  // Connect over unix sockets
-  ctx_ = redisAsyncConnectUnix(path.c_str());
-
-  init_hiredis();
+  return true;
 }
 
 void breakEventLoop(struct ev_loop* loop, ev_async* async, int revents) {
@@ -192,45 +249,6 @@ void Redox::runEventLoop() {
   logger_.info() << "Event thread exited.";
 }
 
-bool Redox::connect() {
-
-  event_loop_thread_ = thread([this] { runEventLoop(); });
-
-  // Block until connected and running the event loop, or until
-  // a connection error happens and the event loop exits
-  unique_lock<mutex> ul(running_waiter_lock_);
-  running_waiter_.wait(ul, [this] {
-    return running_.load() || connect_state_ == CONNECT_ERROR;
-  });
-
-  // Return if succeeded
-  return connect_state_ == CONNECTED;
-}
-
-void Redox::disconnect() {
-  stop();
-  wait();
-}
-
-void Redox::stop() {
-  to_exit_ = true;
-  logger_.debug() << "stop() called, breaking event loop";
-  ev_async_send(evloop_, &watcher_stop_);
-}
-
-void Redox::wait() {
-  unique_lock<mutex> ul(exit_waiter_lock_);
-  exit_waiter_.wait(ul, [this] { return exited_.load(); });
-}
-
-Redox::~Redox() {
-
-  // Bring down the event loop
-  stop();
-
-  if(event_loop_thread_.joinable()) event_loop_thread_.join();
-  ev_loop_destroy(evloop_);
-}
 
 template<class ReplyT>
 Command<ReplyT>* Redox::findCommand(long id) {

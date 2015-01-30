@@ -12,9 +12,8 @@ using redox::Subscriber;
 
 int main(int argc, char* argv[]) {
 
-  Redox rdx = {"localhost", 6379}; // Initialize Redox
-
-  if(!rdx.connect()) return 1; // Start the event loop
+  Redox rdx;
+  if(!rdx.connect("localhost", 6379)) return 1;
 
   rdx.del("occupation");
 

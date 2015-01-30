@@ -22,8 +22,8 @@ std::string random_string(size_t length) {
 
 int main(int argc, char* argv[]) {
 
-  redox::Redox rdx = {"localhost", 6379}; // Initialize Redox
-  if(!rdx.connect()) return 1; // Start the event loop
+  redox::Redox rdx; // Initialize Redox
+  if(!rdx.connect("localhost", 6379)) return 1; // Start the event loop
 
   rdx.del("binary");
 

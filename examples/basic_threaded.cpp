@@ -11,11 +11,11 @@ using namespace std;
 using redox::Redox;
 using redox::Command;
 
-redox::Redox rdx = {"localhost", 6379};
+redox::Redox rdx;
 
 int main(int argc, char* argv[]) {
 
-  if(!rdx.connect()) return 1;
+  if(!rdx.connect("localhost", 6379)) return 1;
 
   thread setter([]() {
     for(int i = 0; i < 5000; i++) {

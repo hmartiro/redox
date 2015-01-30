@@ -45,6 +45,7 @@ namespace redox {
 
 static const std::string REDIS_DEFAULT_HOST = "localhost";
 static const int REDIS_DEFAULT_PORT = 6379;
+static const std::string REDIS_DEFAULT_PATH = "/var/run/redis/redis.sock";
 
 /**
 * Redox intro here.
@@ -65,22 +66,9 @@ public:
   // ------------------------------------------------
 
   /**
-  * Initializes everything, connects over TCP to a Redis server.
+  * Constructor. Optionally specify a log stream and a log level.
   */
   Redox(
-    const std::string& host = REDIS_DEFAULT_HOST,
-    const int port = REDIS_DEFAULT_PORT,
-    std::function<void(int)> connection_callback = nullptr,
-    std::ostream& log_stream = std::cout,
-    log::Level log_level = log::Warning
-  );
-
-  /**
-  * Initializes everything, connects over unix sockets to a Redis server.
-  */
-  Redox(
-    const std::string& path,
-    std::function<void(int)> connection_callback,
     std::ostream& log_stream = std::cout,
     log::Level log_level = log::Warning
   );
@@ -92,10 +80,21 @@ public:
   ~Redox();
 
   /**
-  * Connects to Redis and starts an event loop in a separate thread. Returns
+  * Connects to Redis over TCP and starts an event loop in a separate thread. Returns
   * true once everything is ready, or false on failure.
   */
-  bool connect();
+  bool connect(
+      const std::string& host = REDIS_DEFAULT_HOST,
+      const int port = REDIS_DEFAULT_PORT,
+      std::function<void(int)> connection_callback = nullptr);
+
+  /**
+  * Connects to Redis over a unix socket and starts an event loop in a separate
+  * thread. Returns true once everything is ready, or false on failure.
+  */
+  bool connect_unix(
+      const std::string& path = REDIS_DEFAULT_PATH,
+      std::function<void(int)> connection_callback = nullptr);
 
   /**
   * Disconnect from Redis, shut down the event loop, then return. A simple
@@ -207,12 +206,13 @@ public:
   // Hiredis context, left public to allow low-level access
   redisAsyncContext * ctx_;
 
+  // TODO make these private
   // Redox server over TCP
-  const std::string host_;
-  const int port_;
+  std::string host_;
+  int port_;
 
   // Redox server over unix
-  const std::string path_;
+  std::string path_;
 
   // Logger
   log::Logger logger_;
@@ -235,8 +235,9 @@ private:
   );
 
   // Setup code for the constructors
-  void init_ev();
-  void init_hiredis();
+  // Return true on success, false on failure
+  bool init_ev();
+  bool init_hiredis();
 
   // Callbacks invoked on server connection/disconnection
   static void connectedCallback(const redisAsyncContext* c, int status);

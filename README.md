@@ -18,7 +18,7 @@ details so you can move on to the interesting part of your project.
  * Automatic pipelining, even for synchronous calls from separate threads
  * Low-level access when needed
  * Accessible and robust error handling
- * Logs to any ostream at a user-controllable log level
+ * Logs to any ostream at a user-controlled log level
  * Fast - developed for robotics applications
  * 100% clean Valgrind reports
 
@@ -55,8 +55,8 @@ Here is the simplest possible redox program:
     
     int main(int argc, char* argv[]) {
     
-      Redox rdx = {"localhost", 6379};
-      if(!rdx.connect()) return 1;
+      Redox rdx;
+      if(!rdx.connect("localhost", 6379)) return 1;
     
       rdx.set("hello", "world!");
       cout << "Hello, " << rdx.get("hello") << endl;
@@ -104,8 +104,10 @@ the callback returns.
 
 Here is a simple example of running `GET hello` asynchronously ten times:
 
-    Redox rdx; // Localhost by default
-    if(!rdx.connect()) return 1; // Block until connected
+    Redox rdx;
+    
+    // Block until connected, localhost by default
+    if(!rdx.connect()) return 1;
 
     auto got_reply = [](Command<string>& c) {
       if(!c.ok()) return;

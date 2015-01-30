@@ -36,12 +36,12 @@ class RedoxTest : public ::testing::Test {
 
 protected:
 
-  Redox rdx = {"localhost", 6379};
+  Redox rdx;
 
   RedoxTest() {
 
     // Connect to the server
-    rdx.connect();
+    rdx.connect("localhost", 6379);
 
     // Clear all keys used by the tests here
     rdx.command("DEL redox_test:a");

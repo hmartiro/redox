@@ -26,22 +26,10 @@ using namespace std;
 namespace redox {
 
 Subscriber::Subscriber(
-    const std::string& host, const int port,
-    std::function<void(int)> connection_callback,
     std::ostream& log_stream, log::Level log_level
-) : rdx_(host, port, connection_callback, log_stream, log_level),
-    logger_(rdx_.logger_) {}
+) : rdx_(log_stream, log_level), logger_(rdx_.logger_) {}
 
-Subscriber::Subscriber(
-    const std::string& path,
-    std::function<void(int)> connection_callback,
-    std::ostream& log_stream, log::Level log_level
-) : rdx_(path, connection_callback, log_stream, log_level),
-    logger_(rdx_.logger_) {}
-
-Subscriber::~Subscriber() {
-
-}
+Subscriber::~Subscriber() {}
 
 void Subscriber::disconnect() {
   stop();

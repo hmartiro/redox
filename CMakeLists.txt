@@ -26,7 +26,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
 # ---------------------------------------------------------
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
-set(INC_DIR ${CMAKE_SOURCE_DIR}/include/redox)
+set(INC_DIR ${CMAKE_SOURCE_DIR}/include)
 
 set(SRC_CORE
   ${SRC_DIR}/client.cpp
@@ -34,20 +34,20 @@ set(SRC_CORE
   ${SRC_DIR}/subscriber.cpp)
 
 set(INC_CORE
-    ${INC_DIR}/client.hpp
-    ${INC_DIR}/subscriber.hpp
-    ${INC_DIR}/command.hpp)
+    ${INC_DIR}/redox/client.hpp
+    ${INC_DIR}/redox/subscriber.hpp
+    ${INC_DIR}/redox/command.hpp)
 
 set(SRC_UTILS ${SRC_DIR}/utils/logger.cpp)
 set(INC_UTILS ${INC_DIR}/utils/logger.hpp)
 
-set(INC_WRAPPER ${CMAKE_SOURCE_DIR}/include/redox.hpp)
+set(INC_WRAPPER ${INC_DIR}/redox.hpp)
 
 set(SRC_ALL ${SRC_CORE} ${SRC_UTILS})
 set(INC_ALL ${INC_CORE} ${INC_UTILS} ${INC_WRAPPER})
 
 include_directories(${INC_DIR})
-#include_directories(${INC_DIR/redox})
+include_directories(${INC_DIR}/redox)
 
 # Dependent libraries - you may have to change
 # pthread to whatever C++11 threads depends on
