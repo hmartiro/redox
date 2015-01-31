@@ -133,14 +133,17 @@ if (examples)
   add_executable(pub_sub examples/pub_sub.cpp)
   target_link_libraries(pub_sub redox)
 
-  add_executable(speed_test_pubsub examples/speed_test_pubsub ${SRC_ALL})
+  add_executable(speed_test_pubsub examples/speed_test_pubsub.cpp)
   target_link_libraries(speed_test_pubsub redox)
+
+  add_executable(jitter_test examples/jitter_test.cpp)
+  target_link_libraries(jitter_test redox)
 
   add_custom_target(examples)
   add_dependencies(examples
     basic basic_threaded lpush_benchmark speed_test_async speed_test_sync
     speed_test_async_multi data_types multi_client binary_data pub_sub
-    speed_test_pubsub
+    speed_test_pubsub jitter_test
   )
 
 endif()
