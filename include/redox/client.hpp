@@ -55,11 +55,12 @@ class Redox {
 public:
 
   // Connection states
-  static const int NOT_YET_CONNECTED = 0;
-  static const int CONNECTED = 1;
-  static const int DISCONNECTED = 2;
-  static const int CONNECT_ERROR = 3;
-  static const int DISCONNECT_ERROR = 4;
+  static const int NOT_YET_CONNECTED = 0; // Starting state
+  static const int CONNECTED = 1; // Successfully connected
+  static const int DISCONNECTED = 2; // Successfully disconnected
+  static const int CONNECT_ERROR = 3; // Error connecting
+  static const int DISCONNECT_ERROR = 4; // Disconnected on error
+  static const int INIT_ERROR = 5; // Failed to init data structures
 
   // ------------------------------------------------
   // Core public API
@@ -92,7 +93,7 @@ public:
   * Connects to Redis over a unix socket and starts an event loop in a separate
   * thread. Returns true once everything is ready, or false on failure.
   */
-  bool connect_unix(
+  bool connectUnix(
       const std::string& path = REDIS_DEFAULT_PATH,
       std::function<void(int)> connection_callback = nullptr);
 
@@ -119,30 +120,32 @@ public:
   * exactly once. The Command object is provided to the callback, and the
   * memory for it is automatically freed when the callback returns.
   */
+
   template<class ReplyT>
   void command(
-      const std::string& cmd,
+      const std::vector<std::string>& cmd,
       const std::function<void(Command<ReplyT>&)>& callback = nullptr
   );
 
   /**
   * Asynchronously runs a command and ignores any errors or replies.
   */
-  void command(const std::string& cmd);
+  void command(const std::vector<std::string>& cmd);
 
   /**
   * Synchronously runs a command, returning the Command object only once
   * a reply is received or there is an error. The user is responsible for
   * calling .free() on the returned Command object.
   */
+
   template<class ReplyT>
-  Command<ReplyT>& commandSync(const std::string& cmd);
+  Command<ReplyT>& commandSync(const std::vector<std::string>& cmd);
 
   /**
   * Synchronously runs a command, returning only once a reply is received
   * or there's an error. Returns true on successful reply, false on error.
   */
-  bool commandSync(const std::string& cmd);
+  bool commandSync(const std::vector<std::string>& cmd);
 
   /**
   * Creates an asynchronous command that is run every [repeat] seconds,
@@ -150,9 +153,10 @@ public:
   * command is run only once. The user is responsible for calling .free()
   * on the returned Command object.
   */
+
   template<class ReplyT>
   Command<ReplyT>& commandLoop(
-      const std::string& cmd,
+      const std::vector<std::string>& cmd,
       const std::function<void(Command<ReplyT>&)>& callback,
       double repeat,
       double after = 0.0
@@ -164,15 +168,32 @@ public:
   * or error, and the Command object memory is automatically freed
   * after the callback returns.
   */
+
   template<class ReplyT>
   void commandDelayed(
-      const std::string& cmd,
+      const std::vector<std::string>& cmd,
       const std::function<void(Command<ReplyT>&)>& callback,
       double after
   );
 
   // ------------------------------------------------
-  // Wrapper methods for convenience only
+  // Utility methods
+  // ------------------------------------------------
+
+  /**
+  * Given a vector of strings, returns a string of the concatenated elements, separated
+  * by the delimiter. Useful for printing out a command string from a vector.
+  */
+  std::string vecToStr(const std::vector<std::string>& vec, const char delimiter = ' ');
+
+  /**
+  * Given a command string, returns a vector of strings by splitting the input by
+  * the delimiter. Useful for turning a string input into a command.
+  */
+  std::vector<std::string> strToVec(const std::string& s, const char delimiter = ' ');
+
+  // ------------------------------------------------
+  // Command wrapper methods for convenience only
   // ------------------------------------------------
 
   /**
@@ -225,9 +246,12 @@ private:
 
   // One stop shop for creating commands. The base of all public
   // methods that run commands.
+
+  // One stop shop for creating commands. The base of all public
+  // methods that run commands.
   template<class ReplyT>
   Command<ReplyT>& createCommand(
-      const std::string& cmd,
+      const std::vector<std::string>& cmd,
       const std::function<void(Command<ReplyT>&)>& callback = nullptr,
       double repeat = 0.0,
       double after = 0.0,
@@ -236,8 +260,8 @@ private:
 
   // Setup code for the constructors
   // Return true on success, false on failure
-  bool init_ev();
-  bool init_hiredis();
+  bool initEv();
+  bool initHiredis();
 
   // Callbacks invoked on server connection/disconnection
   static void connectedCallback(const redisAsyncContext* c, int status);
@@ -380,7 +404,7 @@ private:
 
 template<class ReplyT>
 Command<ReplyT>& Redox::createCommand(
-    const std::string& cmd,
+    const std::vector<std::string>& cmd,
     const std::function<void(Command<ReplyT>&)>& callback,
     double repeat,
     double after,
@@ -411,7 +435,7 @@ Command<ReplyT>& Redox::createCommand(
 
 template<class ReplyT>
 void Redox::command(
-    const std::string& cmd,
+    const std::vector<std::string>& cmd,
     const std::function<void(Command<ReplyT>&)>& callback
 ) {
   createCommand(cmd, callback);
@@ -419,7 +443,7 @@ void Redox::command(
 
 template<class ReplyT>
 Command<ReplyT>& Redox::commandLoop(
-    const std::string& cmd,
+    const std::vector<std::string>& cmd,
     const std::function<void(Command<ReplyT>&)>& callback,
     double repeat,
     double after
@@ -429,7 +453,7 @@ Command<ReplyT>& Redox::commandLoop(
 
 template<class ReplyT>
 void Redox::commandDelayed(
-    const std::string& cmd,
+    const std::vector<std::string>& cmd,
     const std::function<void(Command<ReplyT>&)>& callback,
     double after
 ) {
@@ -437,7 +461,7 @@ void Redox::commandDelayed(
 }
 
 template<class ReplyT>
-Command<ReplyT>& Redox::commandSync(const std::string& cmd) {
+Command<ReplyT>& Redox::commandSync(const std::vector<std::string>& cmd) {
   auto& c = createCommand<ReplyT>(cmd, nullptr, 0, 0, false);
   c.wait();
   return c;

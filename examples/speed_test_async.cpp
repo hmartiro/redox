@@ -19,29 +19,28 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx;
-  if(!rdx.connect_unix("/var/run/redis/redis.sock")) return 1;
+  if(!rdx.connectUnix("/var/run/redis/redis.sock")) return 1;
 
-  bool status = rdx.commandSync("SET simple_loop:count 0");
-  if(status) {
+  if(rdx.set("simple_loop:count", "0")) {
     cout << "Reset the counter to zero." << endl;
   } else {
     cerr << "Failed to reset counter." << endl;
     return 1;
   }
 
-  string cmd_str = "INCR simple_loop:count";
+  vector<string> cmd_vec = {"INCR", "simple_loop:count"};
   double freq = 400000; // Hz
   double dt = 1 / freq; // s
   double t = 5; // s
 
-  cout << "Sending \"" << cmd_str << "\" asynchronously every "
+  cout << "Sending \"" << rdx.vecToStr(cmd_vec) << "\" asynchronously every "
        << dt << "s for " << t << "s..." << endl;
 
   double t0 = time_s();
   atomic_int count(0);
 
   Command<int>& cmd = rdx.commandLoop<int>(
-      cmd_str,
+      cmd_vec,
       [&count, &rdx](Command<int>& c) {
         if (!c.ok()) {
           cerr << "Bad reply: " << c.status() << endl;
@@ -67,4 +66,4 @@ int main(int argc, char* argv[]) {
 
   rdx.disconnect();
   return 0;
-}
+};

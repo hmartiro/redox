@@ -52,12 +52,12 @@ public:
   }
 
   /**
-  * Same as .connect_unix() on a Redox instance.
+  * Same as .connectUnix() on a Redox instance.
   */
   bool connect_unix(
       const std::string& path = REDIS_DEFAULT_PATH,
       std::function<void(int)> connection_callback = nullptr) {
-    return rdx_.connect_unix(path, connection_callback);
+    return rdx_.connectUnix(path, connection_callback);
   }
 
   /**

@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   atomic_int count = {0};
 
   for(int i = 1; i <= len; i++) {
-    rdx.command<int>("lpush test 1", [&t0, &t1, &count, len, &rdx](Command<int>& c) {
+    rdx.command<int>({"lpush", "test", "1"}, [&t0, &t1, &count, len, &rdx](Command<int>& c) {
 
       if(!c.ok()) return;
 

@@ -18,7 +18,8 @@ details so you can move on to the interesting part of your project.
  * Automatic pipelining, even for synchronous calls from separate threads
  * Low-level access when needed
  * Accessible and robust error handling
- * Logs to any ostream at a user-controlled log level
+ * Configurable logging level and output to any ostream
+ * Full support for binary data (keys and values)
  * Fast - developed for robotics applications
  * 100% clean Valgrind reports
 
@@ -76,10 +77,12 @@ a reply is received from the server.
 
 #### Asynchronous commands
 In a high-performance application, we don't want to wait for a reply, but instead
-do other work.
-The `command` method accepts a Redis command and a callback to be invoked when a reply is received.
-    
-    rdx.command<string>("GET hello", [](Command<string>& c) {
+do other work. At the core of Redox is a generic asynchronous API for executing
+any Redis command and providing a reply callback. The `command` method accepts a
+Redis command in the form of an STL vector of strings, and a callback to be invoked
+when a reply is received or if there is an error.
+
+    rdx.command<string>({"GET", "hello"}, [](Command<string>& c) {
       if(c.ok()) {
         cout << "Hello, async " << c.reply() << endl;
       } else {
@@ -91,7 +94,8 @@ This statement tells redox to run the command `GET hello`. The `<string>` templa
 parameter means that we want the reply to be put into a string and that we expect
 the server to respond with something that can be put into a string. The full list
 of reply types is listed in this document and covers convenient access to anything
-returned from the Redis protocol.
+returned from the Redis protocol. The input vector can contain arbitrary binary
+data.
 
 The second argument is a callback function that accepts a reference to a Command object
 of the requested reply type. The Command object contains the reply and any error
@@ -108,17 +112,17 @@ Here is a simple example of running `GET hello` asynchronously ten times:
     
     // Block until connected, localhost by default
     if(!rdx.connect()) return 1;
-
+    
     auto got_reply = [](Command<string>& c) {
       if(!c.ok()) return;
       cout << c.cmd() << ": " << c.reply() << endl;
     };
-
-    for(int i = 0; i < 10; i++) rdx.command<string>("GET hello", got_reply);
-
+    
+    for(int i = 0; i < 10; i++) rdx.command<string>({"GET", "hello"}, got_reply);
+    
     // Do useful work
     this_thread::sleep_for(chrono::milliseconds(10));
-
+    
     rdx.disconnect(); // Block until disconnected
 
 The `.command()` method returns immediately, so this program doesn't wait for a reply
@@ -136,7 +140,7 @@ shut down after we get all replies, we could do something like this:
       if(count == total) rdx.stop(); // Signal to shut down
     };
     
-    for(int i = 0; i < total; i++) rdx.command<string>("GET hello", got_reply);
+    for(int i = 0; i < total; i++) rdx.command<string>({"GET", "hello"}, got_reply);
     
     // Do useful work
     
@@ -157,13 +161,13 @@ between synchronous commands in different threads. The `commandSync` method prov
 a similar API to `command`, but instead of a callback returns a Command object when
 a reply is received.
 
-    Command<string>& c = rdx.commandSync<string>("GET hello");
+    Command<string>& c = rdx.commandSync<string>({"GET", "hello"});
     if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
     c.free();
 
 When using synchronous commands, the user is responsible for freeing the memory of
-the Command object by calling `c.free()`. The `c.cmd()` method just returns the
-command string (`GET hello` in this case).
+the Command object by calling `c.free()`. The `c.cmd()` method just returns a string
+representation of the command (`GET hello` in this case).
 
 #### Looping and delayed commands
 We often want to run commands on regular invervals. Redox provides the `commandLoop`
@@ -173,7 +177,7 @@ commands in a loop, because it only creates a single Command object.
 to repeat the command. It then runs the command on the given interval until the user
 calls `c.free()`.
 
-    Command<string>& cmd = rdx.commandLoop<string>("GET hello", [](Command<string>& c) {
+    Command<string>& cmd = rdx.commandLoop<string>({"GET", "hello"}, [](Command<string>& c) {
       if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
     }, 0.1);
     
@@ -185,7 +189,7 @@ Finally, `commandDelayed` runs a command after a specified delay (in seconds). I
 not return a command object, because the memory is automatically freed after the callback
 is invoked.
 
-    rdx.commandDelayed<string>("GET hello", [](Command<string>& c) {
+    rdx.commandDelayed<string>({"GET", "hello"}, [](Command<string>& c) {
       if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
     }, 1);
     this_thread::sleep_for(chrono::seconds(2));
@@ -218,6 +222,12 @@ receives messages and provides subscribe/unsubscribe and psubscribe/punsubscribe
     }
     
     sub.disconnect(); rdx.disconnect();
+
+#### strToVec and vecToStr
+Redox provides helper methods to convert between a string command and
+a vector of strings as needed by its API. `rdx.strToVec("GET foo")`
+will return an `std::vector<std::string>` containing `GET` and `foo`
+as entries. `rdx.vecToStr({"GET", "foo"})` will return the string `GET foo`.
 
 ## Reply types
 These the available template parameters in redox and the Redis

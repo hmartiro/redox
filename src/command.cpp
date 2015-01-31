@@ -33,7 +33,7 @@ template<class ReplyT>
 Command<ReplyT>::Command(
     Redox* rdx,
     long id,
-    const std::string& cmd,
+    const std::vector<std::string>& cmd,
     const std::function<void(Command<ReplyT>&)>& callback,
     double repeat, double after, bool free_memory, log::Logger& logger
 ) : rdx_(rdx), id_(id), cmd_(cmd), repeat_(repeat), after_(after), free_memory_(free_memory),
@@ -113,10 +113,15 @@ template<class ReplyT>
 ReplyT Command<ReplyT>::reply() {
   std::lock_guard<std::mutex> lg(reply_guard_);
   if (!ok()) {
-    logger_.warning() << cmd_ << ": Accessing reply value while status != OK.";
+    logger_.warning() << cmd() << ": Accessing reply value while status != OK.";
   }
   return reply_val_;
 }
+
+template<class ReplyT>
+std::string Command<ReplyT>::cmd() const {
+  return rdx_->vecToStr(cmd_);
+};
 
 template<class ReplyT>
 bool Command<ReplyT>::isExpectedReply(int type) {
@@ -128,7 +133,7 @@ bool Command<ReplyT>::isExpectedReply(int type) {
 
   if(checkErrorReply() || checkNilReply()) return false;
 
-  logger_.error() << cmd_ << ": Received reply of type " << reply_obj_->type
+  logger_.error() << cmd() << ": Received reply of type " << reply_obj_->type
       << ", expected type " << type << ".";
   reply_status_ = WRONG_TYPE;
   return false;
@@ -144,7 +149,7 @@ bool Command<ReplyT>::isExpectedReply(int typeA, int typeB) {
 
   if(checkErrorReply() || checkNilReply()) return false;
 
-  logger_.error() << cmd_ << ": Received reply of type " << reply_obj_->type
+  logger_.error() << cmd() << ": Received reply of type " << reply_obj_->type
       << ", expected type " << typeA << " or " << typeB << ".";
   reply_status_ = WRONG_TYPE;
   return false;
@@ -154,7 +159,7 @@ template<class ReplyT>
 bool Command<ReplyT>::checkErrorReply() {
 
   if (reply_obj_->type == REDIS_REPLY_ERROR) {
-    logger_.error() << cmd_ << ": " << reply_obj_->str;
+    logger_.error() << cmd() << ": " << reply_obj_->str;
     reply_status_ = ERROR_REPLY;
     return true;
   }
@@ -165,7 +170,7 @@ template<class ReplyT>
 bool Command<ReplyT>::checkNilReply() {
 
   if (reply_obj_->type == REDIS_REPLY_NIL) {
-    logger_.warning() << cmd_ << ": Nil reply.";
+    logger_.warning() << cmd() << ": Nil reply.";
     reply_status_ = NIL_REPLY;
     return true;
   }

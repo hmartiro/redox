@@ -19,6 +19,7 @@
 */
 
 #include <signal.h>
+#include <algorithm>
 #include "client.hpp"
 
 using namespace std;
@@ -28,7 +29,7 @@ namespace redox {
 Redox::Redox(
     ostream& log_stream,
     log::Level log_level
-) : logger_(log_stream, log_level) {}
+) : logger_(log_stream, log_level), evloop_(nullptr) {}
 
 bool Redox::connect(
     const std::string& host, const int port,
@@ -39,12 +40,12 @@ bool Redox::connect(
   port_ = port;
   user_connection_callback_ = connection_callback;
 
-  if(!init_ev()) return false;
+  if(!initEv()) return false;
 
   // Connect over TCP
   ctx_ = redisAsyncConnect(host.c_str(), port);
 
-  if(!init_hiredis()) return false;
+  if(!initHiredis()) return false;
 
   event_loop_thread_ = thread([this] { runEventLoop(); });
 
@@ -59,7 +60,7 @@ bool Redox::connect(
   return connect_state_ == CONNECTED;
 }
 
-bool Redox::connect_unix(
+bool Redox::connectUnix(
     const std::string& path,
     std::function<void(int)> connection_callback
 ) {
@@ -67,12 +68,12 @@ bool Redox::connect_unix(
   path_ = path;
   user_connection_callback_ = connection_callback;
 
-  if(!init_ev()) return false;
+  if(!initEv()) return false;
 
   // Connect over unix sockets
   ctx_ = redisAsyncConnectUnix(path.c_str());
 
-  if(!init_hiredis()) return false;
+  if(!initHiredis()) return false;
 
   event_loop_thread_ = thread([this] { runEventLoop(); });
 
@@ -106,10 +107,11 @@ void Redox::wait() {
 Redox::~Redox() {
 
   // Bring down the event loop
-  stop();
+  if(running_ == true) { stop(); }
 
   if(event_loop_thread_.joinable()) event_loop_thread_.join();
-  ev_loop_destroy(evloop_);
+
+  if(evloop_ != nullptr) ev_loop_destroy(evloop_);
 }
 
 void Redox::connectedCallback(const redisAsyncContext* ctx, int status) {
@@ -148,30 +150,52 @@ void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
   if(rdx->user_connection_callback_) rdx->user_connection_callback_(rdx->connect_state_);
 }
 
-bool Redox::init_ev() {
+bool Redox::initEv() {
   signal(SIGPIPE, SIG_IGN);
   evloop_ = ev_loop_new(EVFLAG_AUTO);
+  if(evloop_ == nullptr) {
+    logger_.fatal() << "Could not create a libev event loop.";
+    connect_state_ = INIT_ERROR;
+    connect_waiter_.notify_all();
+    return false;
+  }
   ev_set_userdata(evloop_, (void*)this); // Back-reference
   return true;
 }
 
-bool Redox::init_hiredis() {
+bool Redox::initHiredis() {
 
   ctx_->data = (void*)this; // Back-reference
 
   if (ctx_->err) {
-    logger_.error() << "Could not create a hiredis context: " << ctx_->errstr;
-    connect_state_ = CONNECT_ERROR;
+    logger_.fatal() << "Could not create a hiredis context: " << ctx_->errstr;
+    connect_state_ = INIT_ERROR;
     connect_waiter_.notify_all();
     return false;
   }
 
   // Attach event loop to hiredis
-  redisLibevAttach(evloop_, ctx_);
+  if(redisLibevAttach(evloop_, ctx_) != REDIS_OK) {
+    logger_.fatal() << "Could not attach libev event loop to hiredis.";
+    connect_state_ = INIT_ERROR;
+    connect_waiter_.notify_all();
+    return false;
+  }
 
   // Set the callbacks to be invoked on server connection/disconnection
-  redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback);
-  redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback);
+  if(redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback) != REDIS_OK) {
+    logger_.fatal() << "Could not attach connect callback to hiredis.";
+    connect_state_ = INIT_ERROR;
+    connect_waiter_.notify_all();
+    return false;
+  }
+
+  if(redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback) != REDIS_OK) {
+    logger_.fatal() << "Could not attach disconnect callback to hiredis.";
+    connect_state_ = INIT_ERROR;
+    connect_waiter_.notify_all();
+    return false;
+  }
 
   return true;
 }
@@ -249,7 +273,6 @@ void Redox::runEventLoop() {
   logger_.info() << "Event thread exited.";
 }
 
-
 template<class ReplyT>
 Command<ReplyT>* Redox::findCommand(long id) {
 
@@ -284,32 +307,21 @@ bool Redox::submitToServer(Command<ReplyT>* c) {
   Redox* rdx = c->rdx_;
   c->pending_++;
 
-  // Process binary data if trailing quotation. This is a limited implementation
-  // to allow binary data between the first and the last quotes of the command string,
-  // if the very last character of the command is a quote ('"').
-  if(c->cmd_[c->cmd_.size()-1] == '"') {
+  // Construct a char** from the vector
+  vector<const char*> argv;
+  transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argv),
+      [](const string& s){ return s.c_str(); }
+  );
 
-    // Indices of the quotes
-    size_t first = c->cmd_.find('"');
-    size_t last = c->cmd_.size()-1;
+  // Construct a size_t* of string lengths from the vector
+  vector<size_t> argvlen;
+  transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argvlen),
+      [](const string& s) { return s.size(); }
+  );
 
-    // Proceed only if the first and last quotes are different
-    if(first != last) {
-
-      string format = c->cmd_.substr(0, first) + "%b";
-      string value = c->cmd_.substr(first+1, last-first-1);
-      if (redisAsyncCommand(rdx->ctx_, commandCallback<ReplyT>, (void*) c->id_, format.c_str(), value.c_str(), value.size()) != REDIS_OK) {
-        rdx->logger_.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx_->errstr;
-        c->reply_status_ = Command<ReplyT>::SEND_ERROR;
-        c->invoke();
-        return false;
-      }
-      return true;
-    }
-  }
-
-  if (redisAsyncCommand(rdx->ctx_, commandCallback<ReplyT>, (void*) c->id_, c->cmd_.c_str()) != REDIS_OK) {
-    rdx->logger_.error() << "Could not send \"" << c->cmd_ << "\": " << rdx->ctx_->errstr;
+  if(redisAsyncCommandArgv(rdx->ctx_, commandCallback<ReplyT>,  (void*) c->id_,
+      argv.size(), &argv[0], &argvlen[0]) != REDIS_OK) {
+    rdx->logger_.error() << "Could not send \"" << c->cmd() << "\": " << rdx->ctx_->errstr;
     c->reply_status_ = Command<ReplyT>::SEND_ERROR;
     c->invoke();
     return false;
@@ -498,11 +510,31 @@ Redox::getCommandMap<unordered_set<string>>() { return commands_unordered_set_st
 // Helpers
 // ----------------------------
 
-void Redox::command(const std::string& cmd) {
+string Redox::vecToStr(const vector<string>& vec, const char delimiter) {
+  string str;
+  for(size_t i = 0; i < vec.size() - 1; i++)
+    str += vec[i] + delimiter;
+  str += vec[vec.size()-1];
+  return str;
+}
+
+vector<string> Redox::strToVec(const string& s, const char delimiter) {
+  vector<string> vec;
+  size_t last = 0;
+  size_t next = 0;
+  while ((next = s.find(delimiter, last)) != string::npos) {
+    vec.push_back(s.substr(last, next-last));
+    last = next + 1;
+  }
+  vec.push_back(s.substr(last));
+  return vec;
+}
+
+void Redox::command(const std::vector<std::string>& cmd) {
   command<redisReply*>(cmd, nullptr);
 }
 
-bool Redox::commandSync(const string& cmd) {
+bool Redox::commandSync(const std::vector<std::string>& cmd) {
   auto& c = commandSync<redisReply*>(cmd);
   bool succeeded = c.ok();
   c.free();
@@ -511,7 +543,7 @@ bool Redox::commandSync(const string& cmd) {
 
 string Redox::get(const string& key) {
 
-  Command<char*>& c = commandSync<char*>("GET \"" + key + '"');
+  Command<char*>& c = commandSync<char*>({"GET", key});
   if(!c.ok()) {
     throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c.status()));
   }
@@ -521,15 +553,15 @@ string Redox::get(const string& key) {
 };
 
 bool Redox::set(const string& key, const string& value) {
-  return commandSync("SET " + key + " \"" + value + '"');
+  return commandSync({"SET", key, value});
 }
 
 bool Redox::del(const string& key) {
-  return commandSync("DEL \"" + key + '"');
+  return commandSync({"DEL", key});
 }
 
 void Redox::publish(const string& topic, const string& msg) {
-  command<redisReply*>("PUBLISH " + topic + " \"" + msg + '"');
+  command<redisReply*>({"PUBLISH", topic, msg});
 }
 
 } // End namespace redis

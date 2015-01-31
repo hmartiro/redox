@@ -19,7 +19,7 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  Redox rdx;
+  Redox rdx = {cout, redox::log::Debug};
   if(!rdx.connect("localhost", 6379)) return 1;
 
   if(rdx.set("simple_loop:count", "0")) {
@@ -29,13 +29,13 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  string cmd_str = "INCR simple_loop:count";
+  vector<string> cmd_vec = {"INCR", "simple_loop:count"};
   double freq = 10000; // Hz
   double dt = 1 / freq; // s
   double t = 5; // s
   int parallel = 100;
 
-  cout << "Sending \"" << cmd_str << "\" asynchronously every "
+  cout << "Sending \"" << rdx.vecToStr(cmd_vec) << "\" asynchronously every "
        << dt << "s for " << t << "s..." << endl;
 
   double t0 = time_s();
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   vector<Command<int>*> commands;
   for(int i = 0; i < parallel; i++) {
     commands.push_back(&rdx.commandLoop<int>(
-        cmd_str,
+        cmd_vec,
         [&count, &rdx](Command<int>& c) {
           if (!c.ok()) {
             cerr << "Bad reply: " << c.status() << endl;
@@ -72,4 +72,4 @@ int main(int argc, char* argv[]) {
 
   rdx.disconnect();
   return 0;
-}
+};

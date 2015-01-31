@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
 
   thread setter([]() {
     for(int i = 0; i < 5000; i++) {
-      rdx.command<int>("INCR counter");
+      rdx.command<int>({"INCR", "counter"});
       this_thread::sleep_for(chrono::milliseconds(1));
     }
     cout << "Setter thread exiting." << endl;
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   thread getter([]() {
     for(int i = 0; i < 5; i++) {
       rdx.command<string>(
-          "GET counter",
+          {"GET", "counter"},
           [](Command<string>& c) {
             if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
           }

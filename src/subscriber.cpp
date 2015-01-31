@@ -99,7 +99,7 @@ void Subscriber::subscribeBase(const string cmd_name, const string topic,
     function<void(const string&, int)> err_callback
 ) {
 
-  Command<redisReply*>& sub_cmd = rdx_.commandLoop<redisReply*>(cmd_name + " " + topic,
+  Command<redisReply*>& sub_cmd = rdx_.commandLoop<redisReply*>({cmd_name, topic},
       [this, topic, msg_callback, err_callback, sub_callback, unsub_callback](Command<redisReply*>& c) {
 
         if (!c.ok()) {
@@ -191,7 +191,7 @@ void Subscriber::psubscribe(const string topic,
 void Subscriber::unsubscribeBase(const string cmd_name, const string topic,
     function<void(const string&, int)> err_callback
 ) {
-  rdx_.command<redisReply*>(cmd_name + " " + topic,
+  rdx_.command<redisReply*>({cmd_name, topic},
       [topic, err_callback](Command<redisReply*>& c) {
         if(!c.ok()) {
           if (err_callback) err_callback(topic, c.status());

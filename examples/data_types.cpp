@@ -3,10 +3,10 @@
 */
 
 #include <iostream>
-#include "redox.hpp"
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include "redox.hpp"
 
 using namespace std;
 using redox::Redox;
@@ -19,9 +19,9 @@ int main(int argc, char* argv[]) {
 
   rdx.del("mylist");
 
-  rdx.commandSync("LPUSH mylist 1 2 3 4 5 6 7 8 9 10");
+  rdx.commandSync(rdx.strToVec("LPUSH mylist 1 2 3 4 5 6 7 8 9 10"));
 
-  rdx.command<vector<string>>("LRANGE mylist 0 4",
+  rdx.command<vector<string>>({"LRANGE", "mylist", "0", "4"},
     [](Command<vector<string>>& c){
       if(!c.ok()) return;
       cout << "Last 5 elements as a vector: ";
@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     }
   );
 
-  rdx.command<unordered_set<string>>("LRANGE mylist 0 4",
+  rdx.command<unordered_set<string>>(rdx.strToVec("LRANGE mylist 0 4"),
     [](Command<unordered_set<string>>& c){
       if(!c.ok()) return;
       cout << "Last 5 elements as a hash: ";
@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
     }
   );
 
-  rdx.command<set<string>>("LRANGE mylist 0 4",
+  rdx.command<set<string>>(rdx.strToVec("LRANGE mylist 0 4"),
     [&rdx](Command<set<string>>& c) {
       if(c.ok()) {
         cout << "Last 5 elements as a set: ";

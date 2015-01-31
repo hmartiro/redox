@@ -20,24 +20,23 @@ int main(int argc, char* argv[]) {
   Redox rdx;
   if(!rdx.connect("localhost", 6379)) return 1;
 
-  if(rdx.commandSync("SET simple_loop:count 0")) {
+  if(rdx.commandSync({"SET", "simple_loop:count", "0"})) {
     cout << "Reset the counter to zero." << endl;
   } else {
     cerr << "Failed to reset counter." << endl;
     return 1;
   }
 
-  string cmd_str = "INCR simple_loop:count";
   double t = 5; // s
 
-  cout << "Sending \"" << cmd_str << "\" synchronously for " << t << "s..." << endl;
+  cout << "Sending \"" << "INCR simple_loop:count" << "\" synchronously for " << t << "s..." << endl;
 
   double t0 = time_s();
   double t_end = t0 + t;
   int count = 0;
 
   while(time_s() < t_end) {
-    Command<int>& c = rdx.commandSync<int>(cmd_str);
+    Command<int>& c = rdx.commandSync<int>({"INCR", "simple_loop:count"});
     if(!c.ok()) cerr << "Bad reply, code: " << c.status() << endl;
     c.free();
     count++;

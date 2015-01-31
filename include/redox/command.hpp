@@ -89,12 +89,12 @@ public:
   /**
   * Returns the command string represented by this object.
   */
-  const std::string& cmd() const { return cmd_; };
+  std::string cmd() const;
 
   // Allow public access to constructed data
   Redox* const rdx_;
   const long id_;
-  const std::string cmd_;
+  const std::vector<std::string> cmd_;
   const double repeat_;
   const double after_;
   const bool free_memory_;
@@ -104,7 +104,7 @@ private:
   Command(
       Redox* rdx,
       long id,
-      const std::string& cmd,
+      const std::vector<std::string>& cmd,
       const std::function<void(Command<ReplyT>&)>& callback,
       double repeat, double after,
       bool free_memory,
