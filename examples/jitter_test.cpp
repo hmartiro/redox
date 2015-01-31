@@ -17,8 +17,8 @@ double time_s() {
 
 int main(int argc, char* argv[]) {
 
-  string usage_string = "Usage: " + string(argv[0]) + " --(set-async|get-async|set-sync|get-sync)";
-  if(argc != 2) {
+  string usage_string = "Usage: " + string(argv[0]) + " --(set-async|get-async|set-sync|get-sync) [freq]";
+  if(argc != 3) {
     cerr << usage_string<< endl;
     return 1;
   }
@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
   Redox rdx;
   if(!rdx.connect("localhost", 6379)) return 1;
 
-  double freq = 1000; // Hz
+  double freq = stod(argv[2]); // Hz
   double dt = 1 / freq; // s
   int iter = 1000000;
   atomic_int count(0);
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
           }
       );
 
-      this_thread::sleep_for(chrono::microseconds((int)((dt) * 1e6)));
+      this_thread::sleep_for(chrono::microseconds((int)(dt * 1e6)));
     }
 
   } else if(!strcmp(argv[1], "--get-async-loop")) {
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
             count++;
             if (count == iter) rdx.stop();
           },
-          .001
+          dt
       );
 
   } else if(!strcmp(argv[1], "--set-async")) {
