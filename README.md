@@ -30,20 +30,22 @@ asynchronous API of hiredis, even for synchronous commands. There is no dependen
 Boost or any other libraries.
 
 ## Benchmarks
-Benchmarks are given by averaging the results of five trials of the speed tests
-in `examples/` on an AWS t2.medium instance running Ubuntu 14.04 (64-bit).
+Benchmarks are given by averaging the results of ten trials of the speed tests
+in `examples/` on an AWS t2.medium instance running Ubuntu 14.04 (64-bit) and a
+local Redis server.
 
-Local Redis server, TCP connection:
+ * `speed_test_async_multi` over TCP: **879,589 commands/s**
+ * `speed_test_async_multi` over Unix socket: **901,683 commands/s**
+ * `speed_test_async` over TCP: **203,285 commands/s**
+ * `speed_test_async` over Unix socket: **301,823 commands/s**
+ * `speed_test_sync` over TCP: **21,072 commands/s**
+ * `speed_test_sync` over TCP: **24,911 commands/s**
 
- * 100 command loops (`speed_test_async_multi`): **685,249 commands/s**
- * One command loop (`speed_test_async`): **195,439 commands/s**
- * Looped synchronous command (`speed_test_sync`): **23,012 commands/s**
-
-Results are comparable to that of an average laptop. On a high-end machine,
-`speed_test_async_multi` usually tops 1,000,000 commands/s.
+Results are comparable to that of a mid-range laptop. On a high-end machine, performance
+can be much higher.
 
 ## Tutorial
-This section introduces the main features of redox. Look in the `examples/` for more inspiration.
+This section introduces the main features of redox. Look in `examples/` for more inspiration.
 
 #### Hello world
 Here is the simplest possible redox program:
@@ -173,7 +175,7 @@ representation of the command (`GET hello` in this case).
 We often want to run commands on regular invervals. Redox provides the `commandLoop`
 method to accomplish this. It is easier to use and more efficient than running individual
 commands in a loop, because it only creates a single Command object.
-`commandLoop` takes a command string, a callback, and an interval (in seconds)
+`commandLoop` takes a command vector, a callback, and an interval (in seconds)
 to repeat the command. It then runs the command on the given interval until the user
 calls `c.free()`.
 
