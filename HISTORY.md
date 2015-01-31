@@ -1,5 +1,11 @@
 # Release History
 
+## 0.2.0 (2015-01-31)
+* Move to vector of strings as input, to handle arbitrary data better and
+improve speed.
+* Add doxygen docs.
+* Move all init code out of constructors into .connect methods.
+
 ## 0.1.0 (2015-01-27)
 First versioned release after many nights of segfaults and memory leaks.
 
