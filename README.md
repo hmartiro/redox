@@ -280,6 +280,14 @@ then:
     make test_redox
     ./test_redox
 
+#### Build documentation
+Redox documentation is generated using [doxygen](http://doxygen.org).
+
+    cd docs
+    doxygen
+
+The documentation can then be viewed in a browser at `docs/html/index.html`.
+
 ## Contributing
 Redox is in its early stages and I am looking for feedback and contributors to make
 it easier, faster, and more robust. Open issues on GitHub or message me directly.

@@ -1,4 +1,4 @@
-/**
+/*
 * Simple stream-based logger for C++11.
 *
 * Adapted from
@@ -24,10 +24,9 @@ enum Level {
 // Forward declaration
 class Logger;
 
-// --------------------
-// Logstream
-// --------------------
-
+/**
+* A class representing one log line.
+*/
 class Logstream : public std::ostringstream {
 public:
   Logstream(Logger &logger, Level l);
@@ -38,10 +37,9 @@ private:
   Level m_loglevel;
 };
 
-// --------------------
-// Logger
-// --------------------
-
+/**
+* A simple stream-based logger.
+*/
 class Logger {
 public:
 

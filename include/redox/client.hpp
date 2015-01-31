@@ -1,4 +1,4 @@
-/**
+/*
 * Redox - A modern, asynchronous, and wicked fast C++11 client for Redis
 *
 *    https://github.com/hmartiro/redox
@@ -48,7 +48,8 @@ static const int REDIS_DEFAULT_PORT = 6379;
 static const std::string REDIS_DEFAULT_PATH = "/var/run/redis/redis.sock";
 
 /**
-* Redox intro here.
+* Redox is a Redis client for C++. It provides a synchronous and asynchronous
+* API for using Redis in high-performance situations.
 */
 class Redox {
 

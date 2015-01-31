@@ -1,4 +1,4 @@
-/**
+/*
 * Simple stream-based logger for C++11.
 *
 * Adapted from

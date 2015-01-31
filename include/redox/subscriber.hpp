@@ -1,4 +1,4 @@
-/**
+/*
 * Redox - A modern, asynchronous, and wicked fast C++11 client for Redis
 *
 *    https://github.com/hmartiro/redox
@@ -54,7 +54,7 @@ public:
   /**
   * Same as .connectUnix() on a Redox instance.
   */
-  bool connect_unix(
+  bool connectUnix(
       const std::string& path = REDIS_DEFAULT_PATH,
       std::function<void(int)> connection_callback = nullptr) {
     return rdx_.connectUnix(path, connection_callback);
