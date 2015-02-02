@@ -39,7 +39,7 @@ local Redis server.
  * `speed_test_async` over TCP: **203,285 commands/s**
  * `speed_test_async` over Unix socket: **301,823 commands/s**
  * `speed_test_sync` over TCP: **21,072 commands/s**
- * `speed_test_sync` over TCP: **24,911 commands/s**
+ * `speed_test_sync` over Unix socket: **24,911 commands/s**
 
 Results are comparable to that of a mid-range laptop. On a high-end machine, performance
 can be much higher.
