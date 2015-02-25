@@ -200,6 +200,12 @@ bool Redox::initHiredis() {
   return true;
 }
 
+void Redox::noWait(bool state) {
+  if(state) logger_.info() << "No-wait mode enabled.";
+  else logger_.info() << "No-wait mode disabled.";
+  nowait_ = state;
+}
+
 void breakEventLoop(struct ev_loop* loop, ev_async* async, int revents) {
   ev_break(loop, EVBREAK_ALL);
 }
@@ -237,12 +243,14 @@ void Redox::runEventLoop() {
   running_ = true;
   running_waiter_.notify_one();
 
-  // Run the event loop
-  // TODO this hogs resources, but ev_run(evloop_) without
-  // the manual loop is slower. Maybe use a CV to run sparsely
-  // unless there are commands to process?
+  // Run the event loop, using NOWAIT if enabled for maximum
+  // throughput by avoiding any sleeping
   while (!to_exit_) {
-    ev_run(evloop_, EVRUN_NOWAIT);
+    if(nowait_) {
+      ev_run(evloop_, EVRUN_NOWAIT);
+    } else {
+      ev_run(evloop_);
+    }
   }
 
   logger_.info() << "Stop signal detected. Closing down event loop.";

@@ -14,7 +14,10 @@ double time_s() {
 int main(int argc, char *argv[]) {
 
   Redox rdx_pub;
+  rdx_pub.noWait(true);
+
   Subscriber rdx_sub;
+  rdx_sub.noWait(true);
 
   if(!rdx_pub.connect()) return 1;
   if(!rdx_sub.connect()) return 1;

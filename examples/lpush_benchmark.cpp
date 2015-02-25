@@ -17,6 +17,7 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   redox::Redox rdx;
+
   if(!rdx.connect()) return 1;
 
   rdx.del("test");

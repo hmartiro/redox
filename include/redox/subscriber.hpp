@@ -42,6 +42,11 @@ public:
   ~Subscriber();
 
   /**
+  * Same as .noWait() on a Redox instance.
+  */
+  void noWait(bool state) { rdx_.noWait(state); }
+
+  /**
   * Same as .connect() on a Redox instance.
   */
   bool connect(

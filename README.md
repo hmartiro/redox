@@ -41,8 +41,7 @@ local Redis server.
  * `speed_test_sync` over TCP: **21,072 commands/s**
  * `speed_test_sync` over Unix socket: **24,911 commands/s**
 
-Results are comparable to that of a mid-range laptop. On a high-end machine, performance
-can be much higher.
+A mid-range laptop gives comparable results. Numbers can be much higher on a high-end machine.
 
 ## Tutorial
 This section introduces the main features of redox. Look in `examples/` for more inspiration.
@@ -230,6 +229,12 @@ Redox provides helper methods to convert between a string command and
 a vector of strings as needed by its API. `rdx.strToVec("GET foo")`
 will return an `std::vector<std::string>` containing `GET` and `foo`
 as entries. `rdx.vecToStr({"GET", "foo"})` will return the string `GET foo`.
+
+#### No-Wait Mode
+Redox provides a no-wait mode, which tells the event loop not to sleep
+in between processing events. It means that the event thread will run
+at 100% CPU, but it can greatly improve performance when critical. It is
+disabled by default and can be enabled with `rdx.noWait(true);`.
 
 ## Reply types
 These the available template parameters in redox and the Redis

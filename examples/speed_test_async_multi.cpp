@@ -20,6 +20,8 @@ double time_s() {
 int main(int argc, char* argv[]) {
 
   Redox rdx = {cout, redox::log::Debug};
+  rdx.noWait(true);
+
   if(!rdx.connect("localhost", 6379)) return 1;
 
   if(rdx.set("simple_loop:count", "0")) {

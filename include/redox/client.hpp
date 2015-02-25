@@ -82,6 +82,18 @@ public:
   ~Redox();
 
   /**
+  * Enables or disables 'no-wait' mode. If enabled, no-wait mode means that the
+  * event loop does not pause in between processing events. It can greatly increase
+  * the throughput (commands per second),but means that the event thread will run at
+  * 100% CPU. Enable when performance is critical and you can spare a core. Default
+  * is off.
+  *
+  * Implementation note: When enabled, the event thread calls libev's ev_run in a
+  *                      loop with the EVRUN_NOWAIT flag.
+  */
+  void noWait(bool state);
+
+  /**
   * Connects to Redis over TCP and starts an event loop in a separate thread. Returns
   * true once everything is ready, or false on failure.
   */
@@ -339,6 +351,9 @@ private:
 
   // Dynamically allocated libev event loop
   struct ev_loop* evloop_;
+
+  // No-wait mode for high-performance
+  std::atomic_bool nowait_ = {false};
 
   // Asynchronous watchers
   ev_async watcher_command_; // For processing commands
