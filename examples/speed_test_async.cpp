@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
   Redox rdx;
   rdx.noWait(true);
 
-  if(!rdx.connectUnix("/var/run/redis/redis.sock")) return 1;
+  if(!rdx.connect()) return 1;
 
   if(rdx.set("simple_loop:count", "0")) {
     cout << "Reset the counter to zero." << endl;
