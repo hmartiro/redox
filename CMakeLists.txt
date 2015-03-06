@@ -39,7 +39,7 @@ set(INC_CORE
     ${INC_DIR}/redox/command.hpp)
 
 set(SRC_UTILS ${SRC_DIR}/utils/logger.cpp)
-set(INC_UTILS ${INC_DIR}/utils/logger.hpp)
+set(INC_UTILS ${INC_DIR}/redox/utils/logger.hpp)
 
 set(INC_WRAPPER ${INC_DIR}/redox.hpp)
 
