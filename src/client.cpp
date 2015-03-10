@@ -120,6 +120,7 @@ void Redox::connectedCallback(const redisAsyncContext* ctx, int status) {
 
   if (status != REDIS_OK) {
     rdx->logger_.fatal() << "Could not connect to Redis: " << ctx->errstr;
+    rdx->logger_.fatal() << "Status: " << status;
     rdx->connect_state_ = CONNECT_ERROR;
 
   } else {
@@ -213,6 +214,7 @@ void breakEventLoop(struct ev_loop* loop, ev_async* async, int revents) {
 void Redox::runEventLoop() {
 
   // Events to connect to Redox
+  ev_run(evloop_, EVRUN_ONCE);
   ev_run(evloop_, EVRUN_NOWAIT);
 
   // Block until connected to Redis, or error
