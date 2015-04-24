@@ -7,7 +7,7 @@ set(REDOX_VERSION_PATCH 2)
 set(REDOX_VERSION_STRING ${REDOX_VERSION_MAJOR}.${REDOX_VERSION_MINOR}.${REDOX_VERSION_PATCH})
 
 option(lib "Build Redox as a dynamic library." ON)
-option(static_lib "Build Redox as a static library." OFF)
+option(static_lib "Build Redox as a static library." ON)
 option(tests "Build all tests." OFF)
 option(examples "Build all examples." OFF)
 
@@ -25,29 +25,29 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
 # Source files
 # ---------------------------------------------------------
 
-set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
-set(INC_DIR ${CMAKE_SOURCE_DIR}/include)
+set(SRC_REDOX_DIR ${PROJECT_SOURCE_DIR}/src)
+set(INC_REDOX_DIR ${PROJECT_SOURCE_DIR}/include)
 
-set(SRC_CORE
-  ${SRC_DIR}/client.cpp
-  ${SRC_DIR}/command.cpp
-  ${SRC_DIR}/subscriber.cpp)
+set(SRC_REDOX_CORE
+  ${SRC_REDOX_DIR}/client.cpp
+  ${SRC_REDOX_DIR}/command.cpp
+  ${SRC_REDOX_DIR}/subscriber.cpp)
 
-set(INC_CORE
-    ${INC_DIR}/redox/client.hpp
-    ${INC_DIR}/redox/subscriber.hpp
-    ${INC_DIR}/redox/command.hpp)
+set(INC_REDOX_CORE
+    ${INC_REDOX_DIR}/redox/client.hpp
+    ${INC_REDOX_DIR}/redox/subscriber.hpp
+    ${INC_REDOX_DIR}/redox/command.hpp)
 
-set(SRC_UTILS ${SRC_DIR}/utils/logger.cpp)
-set(INC_UTILS ${INC_DIR}/redox/utils/logger.hpp)
+set(SRC_REDOX_UTILS ${SRC_REDOX_DIR}/utils/logger.cpp)
+set(INC_REDOX_UTILS ${INC_REDOX_DIR}/redox/utils/logger.hpp)
 
-set(INC_WRAPPER ${INC_DIR}/redox.hpp)
+set(INC_REDOX_WRAPPER ${INC_REDOX_DIR}/redox.hpp)
 
-set(SRC_ALL ${SRC_CORE} ${SRC_UTILS})
-set(INC_ALL ${INC_CORE} ${INC_UTILS} ${INC_WRAPPER})
+set(SRC_REDOX_ALL ${SRC_REDOX_CORE} ${SRC_REDOX_UTILS})
+set(INC_REDOX_ALL ${INC_REDOX_CORE} ${INC_REDOX_UTILS} ${INC_REDOX_WRAPPER})
 
-include_directories(${INC_DIR})
-include_directories(${INC_DIR}/redox)
+include_directories(${INC_REDOX_DIR})
+include_directories(${INC_REDOX_DIR}/redox)
 
 # Dependent libraries - you may have to change
 # pthread to whatever C++11 threads depends on
@@ -60,7 +60,7 @@ set(REDOX_LIB_DEPS ev pthread hiredis)
 
 if (lib)
 
-  add_library(redox SHARED ${SRC_ALL} ${INC_CORE})
+  add_library(redox SHARED ${SRC_REDOX_ALL} ${INC_REDOX_CORE})
   target_link_libraries(redox ${REDOX_LIB_DEPS})
 
   set_target_properties(redox
@@ -71,7 +71,7 @@ endif()
 
 if (static_lib)
 
-  add_library(redox_static STATIC ${SRC_ALL})
+  add_library(redox_static STATIC ${SRC_REDOX_ALL})
   target_link_libraries(redox_static ${REDOX_LIB_DEPS})
 
   set_target_properties(redox_static
@@ -158,11 +158,11 @@ set(CMAKE_INSTALL_PREFIX /usr/)
 install(TARGETS redox DESTINATION lib)
 
 # Install the headers into /usr/include/redox
-install(FILES ${INC_CORE} DESTINATION include/redox)
-install(FILES ${INC_UTILS} DESTINATION include/redox/utils)
+install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
+install(FILES ${INC_REDOX_UTILS} DESTINATION include/redox/utils)
 
 # Install the top-level header directly into /usr/include
-install(FILES ${INC_WRAPPER} DESTINATION include)
+install(FILES ${INC_REDOX_WRAPPER} DESTINATION include)
 
 # ---------------------------------------------------------
 # Create system package (make package)
