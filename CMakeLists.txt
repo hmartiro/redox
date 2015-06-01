@@ -154,8 +154,8 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX /usr/)
 
-# Install the dynamic library to /usr/lib
-install(TARGETS redox DESTINATION lib)
+# Install the dynamic library to /usr/lib64
+install(TARGETS redox DESTINATION lib64)
 
 # Install the headers into /usr/include/redox
 install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
