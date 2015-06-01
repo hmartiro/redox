@@ -38,7 +38,9 @@ protected:
 
   Redox rdx;
 
-  RedoxTest() {
+  RedoxTest() {}
+
+  void connect() {
 
     // Connect to the server
     rdx.connect("localhost", 6379);
@@ -47,7 +49,10 @@ protected:
     rdx.command({"DEL", "redox_test:a"});
   }
 
-  virtual ~RedoxTest() { }
+  virtual ~RedoxTest()
+  {
+    rdx.disconnect();
+  }
 
   // CV and counter to wait for async commands to complete
   atomic_int cmd_count = {0};
@@ -149,13 +154,25 @@ protected:
 // Core unit tests - asynchronous
 // -------------------------------------------
 
+TEST_F(RedoxTest, TestConnection)
+{
+    EXPECT_TRUE(rdx.connect("localhost", 6379));
+}
+
+TEST_F(RedoxTest, TestConnectionFailure)
+{
+    EXPECT_FALSE(rdx.connect("localhost", 6380));
+}
+
 TEST_F(RedoxTest, GetSet) {
+  connect();
   rdx.command<string>({"SET", "redox_test:a", "apple"}, print_and_check<string>("OK"));
   rdx.command<string>({"GET", "redox_test:a"},  print_and_check<string>("apple"));
   wait_for_replies();
 }
 
 TEST_F(RedoxTest, Delete) {
+  connect();
   rdx.command<string>({"SET", "redox_test:a", "apple"}, print_and_check<string>("OK"));
   rdx.command<int>({"DEL", "redox_test:a"}, print_and_check(1));
   rdx.command<nullptr_t>({"GET", "redox_test:a"}, check(nullptr));
@@ -163,6 +180,7 @@ TEST_F(RedoxTest, Delete) {
 }
 
 TEST_F(RedoxTest, Incr) {
+  connect();
   int count = 100;
   for(int i = 0; i < count; i++) {
     rdx.command<int>({"INCR", "redox_test:a"}, check(i+1));
@@ -172,6 +190,7 @@ TEST_F(RedoxTest, Incr) {
 }
 
 TEST_F(RedoxTest, Delayed) {
+  connect();
   rdx.commandDelayed<int>({"INCR", "redox_test:a"}, check(1), 0.1);
   this_thread::sleep_for(chrono::milliseconds(150));
   rdx.command<string>({"GET", "redox_test:a"}, print_and_check(to_string(1)));
@@ -179,6 +198,7 @@ TEST_F(RedoxTest, Delayed) {
 }
 
 TEST_F(RedoxTest, Loop) {
+  connect();
   int count = 0;
   int target_count = 20;
   double dt = 0.005;
@@ -208,12 +228,14 @@ TEST_F(RedoxTest, GetSetError) {
 // -------------------------------------------
 
 TEST_F(RedoxTest, GetSetSync) {
+  connect();
   print_and_check_sync<string>(rdx.commandSync<string>({"SET", "redox_test:a", "apple"}), "OK");
   print_and_check_sync<string>(rdx.commandSync<string>({"GET", "redox_test:a"}), "apple");
   rdx.disconnect();
 }
 
 TEST_F(RedoxTest, DeleteSync) {
+  connect();
   print_and_check_sync<string>(rdx.commandSync<string>({"SET", "redox_test:a", "apple"}), "OK");
   print_and_check_sync(rdx.commandSync<int>({"DEL", "redox_test:a"}), 1);
   check_sync(rdx.commandSync<nullptr_t>({"GET", "redox_test:a"}), nullptr);
@@ -221,6 +243,7 @@ TEST_F(RedoxTest, DeleteSync) {
 }
 
 TEST_F(RedoxTest, IncrSync) {
+  connect();
   int count = 100;
   for(int i = 0; i < count; i++) {
     check_sync(rdx.commandSync<int>({"INCR", "redox_test:a"}), i+1);
