@@ -154,8 +154,13 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX /usr/)
 
-# Install the dynamic library to /usr/lib64
-install(TARGETS redox DESTINATION lib64)
+MESSAGE ("CMAKE_SIZEOF_VOID_P: ${CMAKE_SIZEOF_VOID_P}")
+if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
+    set(LIB_SUFFIX "64")
+endif()
+
+# Install the dynamic library to /usr/lib(64)
+install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
 
 # Install the headers into /usr/include/redox
 install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
