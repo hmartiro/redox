@@ -51,7 +51,6 @@ protected:
 
   virtual ~RedoxTest()
   {
-    rdx.disconnect();
   }
 
   // CV and counter to wait for async commands to complete
@@ -218,6 +217,7 @@ TEST_F(RedoxTest, Loop) {
 }
 
 TEST_F(RedoxTest, GetSetError) {
+  connect();
   rdx.command<string>({"SET", "redox_test:a", "apple"}, print_and_check<string>("OK"));
   rdx.command<int>({"GET", "redox_test:a"},  print_and_check_error<int>(3));
   wait_for_replies();
@@ -253,6 +253,7 @@ TEST_F(RedoxTest, IncrSync) {
 }
 
 TEST_F(RedoxTest, GetSetSyncError) {
+  connect();
   print_and_check_sync<string>(rdx.commandSync<string>({"SET", "redox_test:a", "apple"}), "OK");
   print_and_check_error_sync<int>(rdx.commandSync<int>({"GET", "redox_test:a"}), 3);
   rdx.disconnect();

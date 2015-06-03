@@ -167,7 +167,11 @@ template<class ReplyT>
 bool Command<ReplyT>::checkErrorReply() {
 
   if (reply_obj_->type == REDIS_REPLY_ERROR) {
-    last_error_ = reply_obj_->str;
+    if (0 != reply_obj_->str)
+    {
+      last_error_ = reply_obj_->str;
+    }
+
     logger_.error() << cmd() << ": " << last_error_;
     reply_status_ = ERROR_REPLY;
     return true;
