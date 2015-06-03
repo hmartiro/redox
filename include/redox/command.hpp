@@ -61,6 +61,8 @@ public:
   */
   int status() const { return reply_status_; }
 
+  std::string lastError() const { return last_error_; }
+
   /**
   * Returns true if this command got a successful reply.
   */
@@ -138,6 +140,7 @@ private:
   // Place to store the reply value and status.
   ReplyT reply_val_;
   std::atomic_int reply_status_;
+  std::string last_error_;
 
   // How many messages sent to server but not received reply
   std::atomic_int pending_ = {0};

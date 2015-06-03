@@ -224,6 +224,8 @@ void Redox::runEventLoop() {
   // Handle connection error
   if(connect_state_ != CONNECTED) {
     logger_.warning() << "Did not connect, event loop exiting.";
+    exited_ = true;
+    running_ = false;
     running_waiter_.notify_one();
     return;
   }

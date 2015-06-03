@@ -154,8 +154,13 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX /usr/)
 
-# Install the dynamic library to /usr/lib
-install(TARGETS redox DESTINATION lib)
+MESSAGE ("CMAKE_SIZEOF_VOID_P: ${CMAKE_SIZEOF_VOID_P}")
+if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
+    set(LIB_SUFFIX "64")
+endif()
+
+# Install the dynamic library to /usr/lib(64)
+install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
 
 # Install the headers into /usr/include/redox
 install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
@@ -168,16 +173,29 @@ install(FILES ${INC_REDOX_WRAPPER} DESTINATION include)
 # Create system package (make package)
 # ---------------------------------------------------------
 
-# build a CPack driven installer package
+# Determine build architecture
+execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
+message("Building for ${ARCHITECTURE}")
+
+# build CPack driven installer packages
 include(InstallRequiredSystemLibraries)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "C++11 client for Redis")
 set(CPACK_PACKAGE_VENDOR "Hayk Martirosyan")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Hayk Martirosyan <hayk.mart@gmail.com>")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 #set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.3.1-6), libgcc1 (>= 1:3.4.2-12)")
 set(CPACK_PACKAGE_VERSION_MAJOR "${REDOX_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${REDOX_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${REDOX_VERSION_PATCH}")
-set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_VERSION_RELEASE "1") # Increase this if a failed build was published
+set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${CPACK_PACKAGE_VERSION_RELEASE}")
+set(CPACK_SYSTEM_NAME "${ARCHITECTURE}")
+set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}.${ARCHITECTURE}")
+# Debian specific fields
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Hayk Martirosyan <hayk.mart@gmail.com>")
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${ARCHITECTURE}")
+# RPM specific fields
+set(CPACK_RPM_PACKAGE_ARCHITECTURE "${ARCHITECTURE}")
+# Select CPack generators
+set(CPACK_GENERATOR "DEB" "RPM")
 include(CPack)

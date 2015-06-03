@@ -51,18 +51,18 @@ Here is the simplest possible redox program:
 
     #include <iostream>
     #include <redox.hpp>
-    
+
     using namespace std;
     using namespace redox;
-    
+
     int main(int argc, char* argv[]) {
-    
+
       Redox rdx;
       if(!rdx.connect("localhost", 6379)) return 1;
-    
+
       rdx.set("hello", "world!");
       cout << "Hello, " << rdx.get("hello") << endl;
-    
+
       rdx.disconnect();
       return 0;
     }
@@ -74,7 +74,7 @@ Compile and run:
     Hello, world!
 
 This example is synchronous, in the sense that the commands don't return until
-a reply is received from the server. 
+a reply is received from the server.
 
 #### Asynchronous commands
 In a high-performance application, we don't want to wait for a reply, but instead
@@ -110,20 +110,20 @@ the callback returns.
 Here is a simple example of running `GET hello` asynchronously ten times:
 
     Redox rdx;
-    
+
     // Block until connected, localhost by default
     if(!rdx.connect()) return 1;
-    
+
     auto got_reply = [](Command<string>& c) {
       if(!c.ok()) return;
       cout << c.cmd() << ": " << c.reply() << endl;
     };
-    
+
     for(int i = 0; i < 10; i++) rdx.command<string>({"GET", "hello"}, got_reply);
-    
+
     // Do useful work
     this_thread::sleep_for(chrono::milliseconds(10));
-    
+
     rdx.disconnect(); // Block until disconnected
 
 The `.command()` method returns immediately, so this program doesn't wait for a reply
@@ -132,7 +132,7 @@ shut down after we get all replies, we could do something like this:
 
     Redox rdx;
     if(!rdx.connect()) return 1;
-    
+
     int total = 10; // Number of commands to run
     atomic_int count(0); // Number of replies expected
     auto got_reply = [&](Command<string>& c) {
@@ -140,11 +140,11 @@ shut down after we get all replies, we could do something like this:
       if(c.ok()) cout << c.cmd() << " #" << count << ": " << c.reply() << endl;
       if(count == total) rdx.stop(); // Signal to shut down
     };
-    
+
     for(int i = 0; i < total; i++) rdx.command<string>({"GET", "hello"}, got_reply);
-    
+
     // Do useful work
-    
+
     rdx.wait(); // Block until shut down complete
 
 This example tracks of how how many replies are received and signals the Redox
@@ -152,7 +152,7 @@ instance to stop once they all process. We use an `std::atomic_int` to be safe
 because the callback is invoked from a separate thread. The `stop()` method
 signals Redox to shut down its event loop and disconnect from Redis. The `wait()`
 method blocks until `stop()` has been called and everything is brought down.
-The `disconnect()` method used earlier is just a call to `stop()` and then a 
+The `disconnect()` method used earlier is just a call to `stop()` and then a
 call to `wait()`.
 
 #### Synchronous commands
@@ -181,7 +181,7 @@ calls `c.free()`.
     Command<string>& cmd = rdx.commandLoop<string>({"GET", "hello"}, [](Command<string>& c) {
       if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
     }, 0.1);
-    
+
     this_thread::sleep_for(chrono::seconds(1));
     cmd.free();
     rdx.disconnect();
@@ -212,16 +212,16 @@ receives messages and provides subscribe/unsubscribe and psubscribe/punsubscribe
 
     Redox rdx; Subscriber sub;
     if(!rdx.connect() || !sub.connect()) return 1;
-    
+
     sub.subscribe("hello", [](const string& topic, const string& msg) {
       cout << topic << ": " << msg << endl;
     });
-    
+
     for(int i = 0; i < 10; i++) {
       rdx.publish("hello", "this is a pubsub message");
       this_thread::sleep_for(chrono::milliseconds(500));
     }
-    
+
     sub.disconnect(); rdx.disconnect();
 
 #### strToVec and vecToStr
@@ -251,7 +251,7 @@ a `WRONG_TYPE` or `NIL_REPLY` status.
  * `<std::vector<std::string>>`: Arrays of Simple Strings or Bulk Strings (in received order)
  * `<std::set<std::string>>`: Arrays of Simple Strings or Bulk Strings (in sorted order)
  * `<std::unordered_set<std::string>>`: Arrays of Simple Strings or Bulk Strings (in no order)
- 
+
 ## Installation
 Instructions provided are for Ubuntu, but all components are platform-independent.
 
@@ -292,6 +292,14 @@ Redox documentation is generated using [doxygen](http://doxygen.org).
     doxygen
 
 The documentation can then be viewed in a browser at `docs/html/index.html`.
+
+#### Build RPM and DEB packages
+Basic support to build RPMs and DEBs is in the build system. To build them, issue
+the following commands:
+
+    mkdir release && cd release
+    cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+    make package
 
 ## Contributing
 Redox is in its early stages and I am looking for feedback and contributors to make
