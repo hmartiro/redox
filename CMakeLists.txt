@@ -3,7 +3,7 @@ project(redox)
 
 set(REDOX_VERSION_MAJOR 0)
 set(REDOX_VERSION_MINOR 2)
-set(REDOX_VERSION_PATCH 2)
+set(REDOX_VERSION_PATCH 3)
 set(REDOX_VERSION_STRING ${REDOX_VERSION_MAJOR}.${REDOX_VERSION_MINOR}.${REDOX_VERSION_PATCH})
 
 option(lib "Build Redox as a dynamic library." ON)
@@ -154,12 +154,12 @@ endif()
 
 set(CMAKE_INSTALL_PREFIX /usr/)
 
-MESSAGE ("CMAKE_SIZEOF_VOID_P: ${CMAKE_SIZEOF_VOID_P}")
+# Check if it is a 64 bit system
 if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
     set(LIB_SUFFIX "64")
 endif()
 
-# Install the dynamic library to /usr/lib(64)
+# Install the dynamic library to /usr/lib[64]
 install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
 
 # Install the headers into /usr/include/redox

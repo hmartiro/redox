@@ -49,9 +49,7 @@ protected:
     rdx.command({"DEL", "redox_test:a"});
   }
 
-  virtual ~RedoxTest()
-  {
-  }
+  virtual ~RedoxTest() {}
 
   // CV and counter to wait for async commands to complete
   atomic_int cmd_count = {0};
@@ -153,13 +151,11 @@ protected:
 // Core unit tests - asynchronous
 // -------------------------------------------
 
-TEST_F(RedoxTest, TestConnection)
-{
+TEST_F(RedoxTest, TestConnection) {
     EXPECT_TRUE(rdx.connect("localhost", 6379));
 }
 
-TEST_F(RedoxTest, TestConnectionFailure)
-{
+TEST_F(RedoxTest, TestConnectionFailure) {
     EXPECT_FALSE(rdx.connect("localhost", 6380));
 }
 

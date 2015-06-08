@@ -301,9 +301,11 @@ the following commands:
     cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
     make package
 
+NOTE: To build RPM packages, you will need rpmbuild.
+
 ## Contributing
 Redox is in its early stages and I am looking for feedback and contributors to make
 it easier, faster, and more robust. Open issues on GitHub or message me directly.
 
-Redox is not currently recommended for production use. It has no support for features like
-connection pooling, sentinels, clusters, etc. Feel free to provide them!
+Redox is not currently recommended for production use. It has no support yet for sentinels
+or clusters. Feel free to provide them!
