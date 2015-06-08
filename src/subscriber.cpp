@@ -25,9 +25,8 @@ using namespace std;
 
 namespace redox {
 
-Subscriber::Subscriber(
-    std::ostream& log_stream, log::Level log_level
-) : rdx_(log_stream, log_level), logger_(rdx_.logger_) {}
+Subscriber::Subscriber(ostream &log_stream, log::Level log_level)
+    : rdx_(log_stream, log_level), logger_(rdx_.logger_) {}
 
 Subscriber::~Subscriber() {}
 
@@ -36,9 +35,7 @@ void Subscriber::disconnect() {
   wait();
 }
 
-void Subscriber::wait() {
-  rdx_.wait();
-}
+void Subscriber::wait() { rdx_.wait(); }
 
 // This is a fairly awkward way of shutting down, where
 // we pause to wait for subscriptions to happen, and then
@@ -46,114 +43,127 @@ void Subscriber::wait() {
 // The reason is because hiredis goes into
 // a segfault in freeReplyObject() under redisAsyncDisconnect()
 // if we don't do this first.
-// TODO look at hiredis, ask them what causes the error
+// TODO(hayk): look at hiredis, ask them what causes the error
 void Subscriber::stop() {
 
   this_thread::sleep_for(chrono::milliseconds(1000));
 
-  for(const string& topic : subscribedTopics())
+  for (const string &topic : subscribedTopics())
     unsubscribe(topic);
 
-  for(const string& topic : psubscribedTopics())
+  for (const string &topic : psubscribedTopics())
     punsubscribe(topic);
 
   unique_lock<mutex> ul(cv_unsub_guard_);
   cv_unsub_.wait(ul, [this] {
-    std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
+    lock_guard<mutex> lg(subscribed_topics_guard_);
     return (subscribed_topics_.size() == 0);
   });
 
   unique_lock<mutex> ul2(cv_punsub_guard_);
   cv_punsub_.wait(ul, [this] {
-    std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
+    lock_guard<mutex> lg(subscribed_topics_guard_);
     return (psubscribed_topics_.size() == 0);
   });
 
-  for(Command<redisReply*>* c : commands_)
+  for (Command<redisReply *> *c : commands_)
     c->free();
 
   rdx_.stop();
 }
 
 // For debugging only
-void debugReply(Command<redisReply*> c) {
+void debugReply(Command<redisReply *> c) {
 
-  redisReply* reply = c.reply();
+  redisReply *reply = c.reply();
 
   cout << "------" << endl;
   cout << c.cmd() << " " << (reply->type == REDIS_REPLY_ARRAY) << " " << (reply->elements) << endl;
-  for(size_t i = 0; i < reply->elements; i++) {
-    redisReply* r = reply->element[i];
+  for (size_t i = 0; i < reply->elements; i++) {
+    redisReply *r = reply->element[i];
     cout << "element " << i << ", reply type = " << r->type << " ";
-    if(r->type == REDIS_REPLY_STRING) cout << r->str << endl;
-    else if(r->type == REDIS_REPLY_INTEGER) cout << r->integer << endl;
-    else cout << "some other type" << endl;
+    if (r->type == REDIS_REPLY_STRING)
+      cout << r->str << endl;
+    else if (r->type == REDIS_REPLY_INTEGER)
+      cout << r->integer << endl;
+    else
+      cout << "some other type" << endl;
   }
   cout << "------" << endl;
 }
 
 void Subscriber::subscribeBase(const string cmd_name, const string topic,
-    function<void(const string&, const string&)> msg_callback,
-    function<void(const string&)> sub_callback,
-    function<void(const string&)> unsub_callback,
-    function<void(const string&, int)> err_callback
-) {
+                               function<void(const string &, const string &)> msg_callback,
+                               function<void(const string &)> sub_callback,
+                               function<void(const string &)> unsub_callback,
+                               function<void(const string &, int)> err_callback) {
 
-  Command<redisReply*>& sub_cmd = rdx_.commandLoop<redisReply*>({cmd_name, topic},
-      [this, topic, msg_callback, err_callback, sub_callback, unsub_callback](Command<redisReply*>& c) {
+  Command<redisReply *> &sub_cmd = rdx_.commandLoop<redisReply *>(
+      {cmd_name, topic},
+      [this, topic, msg_callback, err_callback, sub_callback, unsub_callback](
+          Command<redisReply *> &c) {
 
         if (!c.ok()) {
           num_pending_subs_--;
-          if (err_callback) err_callback(topic, c.status());
+          if (err_callback)
+            err_callback(topic, c.status());
           return;
         }
 
-        redisReply* reply = c.reply();
+        redisReply *reply = c.reply();
 
         // If the last entry is an integer, then it is a [p]sub/[p]unsub command
         if ((reply->type == REDIS_REPLY_ARRAY) &&
             (reply->element[reply->elements - 1]->type == REDIS_REPLY_INTEGER)) {
 
-          std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
-          std::lock_guard<std::mutex> lg2(psubscribed_topics_guard_);
+          lock_guard<mutex> lg(subscribed_topics_guard_);
+          lock_guard<mutex> lg2(psubscribed_topics_guard_);
 
           if (!strncmp(reply->element[0]->str, "sub", 3)) {
             subscribed_topics_.insert(topic);
             num_pending_subs_--;
-            if (sub_callback) sub_callback(topic);
+            if (sub_callback)
+              sub_callback(topic);
           } else if (!strncmp(reply->element[0]->str, "psub", 4)) {
             psubscribed_topics_.insert(topic);
             num_pending_subs_--;
-            if (sub_callback) sub_callback(topic);
+            if (sub_callback)
+              sub_callback(topic);
           } else if (!strncmp(reply->element[0]->str, "uns", 3)) {
             subscribed_topics_.erase(topic);
-            if (unsub_callback) unsub_callback(topic);
+            if (unsub_callback)
+              unsub_callback(topic);
             cv_unsub_.notify_all();
           } else if (!strncmp(reply->element[0]->str, "puns", 4)) {
             psubscribed_topics_.erase(topic);
-            if (unsub_callback) unsub_callback(topic);
+            if (unsub_callback)
+              unsub_callback(topic);
             cv_punsub_.notify_all();
           }
 
-          else logger_.error() << "Unknown pubsub message: " << reply->element[0]->str;
+          else
+            logger_.error() << "Unknown pubsub message: " << reply->element[0]->str;
         }
 
-          // Message for subscribe
+        // Message for subscribe
         else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 3)) {
-          char* msg = reply->element[2]->str;
-          if (msg && msg_callback) msg_callback(topic, reply->element[2]->str);
+          char *msg = reply->element[2]->str;
+          if (msg && msg_callback)
+            msg_callback(topic, reply->element[2]->str);
         }
 
-          // Message for psubscribe
+        // Message for psubscribe
         else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 4)) {
-          char* msg = reply->element[2]->str;
-          if (msg && msg_callback) msg_callback(reply->element[2]->str, reply->element[3]->str);
+          char *msg = reply->element[2]->str;
+          if (msg && msg_callback)
+            msg_callback(reply->element[2]->str, reply->element[3]->str);
         }
 
-        else logger_.error() << "Unknown pubsub message of type " << reply->type;
+        else
+          logger_.error() << "Unknown pubsub message of type " << reply->type;
       },
       1e10 // To keep the command around for a few hundred years
-  );
+      );
 
   // Add it to the command list
   commands_.insert(&sub_cmd);
@@ -161,13 +171,12 @@ void Subscriber::subscribeBase(const string cmd_name, const string topic,
 }
 
 void Subscriber::subscribe(const string topic,
-    function<void(const string&, const string&)> msg_callback,
-    function<void(const string&)> sub_callback,
-    function<void(const string&)> unsub_callback,
-    function<void(const string&, int)> err_callback
-) {
-  std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
-  if(subscribed_topics_.find(topic) != subscribed_topics_.end()) {
+                           function<void(const string &, const string &)> msg_callback,
+                           function<void(const string &)> sub_callback,
+                           function<void(const string &)> unsub_callback,
+                           function<void(const string &, int)> err_callback) {
+  lock_guard<mutex> lg(subscribed_topics_guard_);
+  if (subscribed_topics_.find(topic) != subscribed_topics_.end()) {
     logger_.warning() << "Already subscribed to " << topic << "!";
     return;
   }
@@ -175,13 +184,12 @@ void Subscriber::subscribe(const string topic,
 }
 
 void Subscriber::psubscribe(const string topic,
-    function<void(const string&, const string&)> msg_callback,
-    function<void(const string&)> sub_callback,
-    function<void(const string&)> unsub_callback,
-    function<void(const string&, int)> err_callback
-) {
-  std::lock_guard<std::mutex> lg(psubscribed_topics_guard_);
-  if(psubscribed_topics_.find(topic) != psubscribed_topics_.end()) {
+                            function<void(const string &, const string &)> msg_callback,
+                            function<void(const string &)> sub_callback,
+                            function<void(const string &)> unsub_callback,
+                            function<void(const string &, int)> err_callback) {
+  lock_guard<mutex> lg(psubscribed_topics_guard_);
+  if (psubscribed_topics_.find(topic) != psubscribed_topics_.end()) {
     logger_.warning() << "Already psubscribed to " << topic << "!";
     return;
   }
@@ -189,23 +197,19 @@ void Subscriber::psubscribe(const string topic,
 }
 
 void Subscriber::unsubscribeBase(const string cmd_name, const string topic,
-    function<void(const string&, int)> err_callback
-) {
-  rdx_.command<redisReply*>({cmd_name, topic},
-      [topic, err_callback](Command<redisReply*>& c) {
-        if(!c.ok()) {
-          if (err_callback) err_callback(topic, c.status());
-          return;
-        }
-      }
-  );
+                                 function<void(const string &, int)> err_callback) {
+  rdx_.command<redisReply *>({cmd_name, topic}, [topic, err_callback](Command<redisReply *> &c) {
+    if (!c.ok()) {
+      if (err_callback)
+        err_callback(topic, c.status());
+      return;
+    }
+  });
 }
 
-void Subscriber::unsubscribe(const string topic,
-    function<void(const string&, int)> err_callback
-) {
-  std::lock_guard<std::mutex> lg(subscribed_topics_guard_);
-  if(subscribed_topics_.find(topic) == subscribed_topics_.end()) {
+void Subscriber::unsubscribe(const string topic, function<void(const string &, int)> err_callback) {
+  lock_guard<mutex> lg(subscribed_topics_guard_);
+  if (subscribed_topics_.find(topic) == subscribed_topics_.end()) {
     logger_.warning() << "Cannot unsubscribe from " << topic << ", not subscribed!";
     return;
   }
@@ -213,10 +217,9 @@ void Subscriber::unsubscribe(const string topic,
 }
 
 void Subscriber::punsubscribe(const string topic,
-    function<void(const string&, int)> err_callback
-) {
-  std::lock_guard<std::mutex> lg(psubscribed_topics_guard_);
-  if(psubscribed_topics_.find(topic) == psubscribed_topics_.end()) {
+                              function<void(const string &, int)> err_callback) {
+  lock_guard<mutex> lg(psubscribed_topics_guard_);
+  if (psubscribed_topics_.find(topic) == psubscribed_topics_.end()) {
     logger_.warning() << "Cannot punsubscribe from " << topic << ", not psubscribed!";
     return;
   }

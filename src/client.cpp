@@ -26,63 +26,56 @@ using namespace std;
 
 namespace redox {
 
-Redox::Redox(
-    ostream& log_stream,
-    log::Level log_level
-) : logger_(log_stream, log_level), evloop_(nullptr) {}
+Redox::Redox(ostream &log_stream, log::Level log_level)
+    : logger_(log_stream, log_level), evloop_(nullptr) {}
 
-bool Redox::connect(
-    const std::string& host, const int port,
-    std::function<void(int)> connection_callback
-) {
+bool Redox::connect(const string &host, const int port,
+                    function<void(int)> connection_callback) {
 
   host_ = host;
   port_ = port;
   user_connection_callback_ = connection_callback;
 
-  if(!initEv()) return false;
+  if (!initEv())
+    return false;
 
   // Connect over TCP
   ctx_ = redisAsyncConnect(host.c_str(), port);
 
-  if(!initHiredis()) return false;
+  if (!initHiredis())
+    return false;
 
   event_loop_thread_ = thread([this] { runEventLoop(); });
 
   // Block until connected and running the event loop, or until
   // a connection error happens and the event loop exits
   unique_lock<mutex> ul(running_waiter_lock_);
-  running_waiter_.wait(ul, [this] {
-    return running_.load() || connect_state_ == CONNECT_ERROR;
-  });
+  running_waiter_.wait(ul, [this] { return running_.load() || connect_state_ == CONNECT_ERROR; });
 
   // Return if succeeded
   return connect_state_ == CONNECTED;
 }
 
-bool Redox::connectUnix(
-    const std::string& path,
-    std::function<void(int)> connection_callback
-) {
+bool Redox::connectUnix(const string &path, function<void(int)> connection_callback) {
 
   path_ = path;
   user_connection_callback_ = connection_callback;
 
-  if(!initEv()) return false;
+  if (!initEv())
+    return false;
 
   // Connect over unix sockets
   ctx_ = redisAsyncConnectUnix(path.c_str());
 
-  if(!initHiredis()) return false;
+  if (!initHiredis())
+    return false;
 
   event_loop_thread_ = thread([this] { runEventLoop(); });
 
   // Block until connected and running the event loop, or until
   // a connection error happens and the event loop exits
   unique_lock<mutex> ul(running_waiter_lock_);
-  running_waiter_.wait(ul, [this] {
-    return running_.load() || connect_state_ == CONNECT_ERROR;
-  });
+  running_waiter_.wait(ul, [this] { return running_.load() || connect_state_ == CONNECT_ERROR; });
 
   // Return if succeeded
   return connect_state_ == CONNECTED;
@@ -107,16 +100,20 @@ void Redox::wait() {
 Redox::~Redox() {
 
   // Bring down the event loop
-  if(running_ == true) { stop(); }
+  if (running_ == true) {
+    stop();
+  }
 
-  if(event_loop_thread_.joinable()) event_loop_thread_.join();
+  if (event_loop_thread_.joinable())
+    event_loop_thread_.join();
 
-  if(evloop_ != nullptr) ev_loop_destroy(evloop_);
+  if (evloop_ != nullptr)
+    ev_loop_destroy(evloop_);
 }
 
-void Redox::connectedCallback(const redisAsyncContext* ctx, int status) {
+void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
 
-  Redox* rdx = (Redox*) ctx->data;
+  Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
     rdx->logger_.fatal() << "Could not connect to Redis: " << ctx->errstr;
@@ -131,12 +128,13 @@ void Redox::connectedCallback(const redisAsyncContext* ctx, int status) {
   }
 
   rdx->connect_waiter_.notify_all();
-  if(rdx->user_connection_callback_) rdx->user_connection_callback_(rdx->connect_state_);
+  if (rdx->user_connection_callback_)
+    rdx->user_connection_callback_(rdx->connect_state_);
 }
 
-void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
+void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
 
-  Redox* rdx = (Redox*) ctx->data;
+  Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
     rdx->logger_.error() << "Disconnected from Redis on error: " << ctx->errstr;
@@ -148,25 +146,26 @@ void Redox::disconnectedCallback(const redisAsyncContext* ctx, int status) {
 
   rdx->stop();
   rdx->connect_waiter_.notify_all();
-  if(rdx->user_connection_callback_) rdx->user_connection_callback_(rdx->connect_state_);
+  if (rdx->user_connection_callback_)
+    rdx->user_connection_callback_(rdx->connect_state_);
 }
 
 bool Redox::initEv() {
   signal(SIGPIPE, SIG_IGN);
   evloop_ = ev_loop_new(EVFLAG_AUTO);
-  if(evloop_ == nullptr) {
+  if (evloop_ == nullptr) {
     logger_.fatal() << "Could not create a libev event loop.";
     connect_state_ = INIT_ERROR;
     connect_waiter_.notify_all();
     return false;
   }
-  ev_set_userdata(evloop_, (void*)this); // Back-reference
+  ev_set_userdata(evloop_, (void *)this); // Back-reference
   return true;
 }
 
 bool Redox::initHiredis() {
 
-  ctx_->data = (void*)this; // Back-reference
+  ctx_->data = (void *)this; // Back-reference
 
   if (ctx_->err) {
     logger_.fatal() << "Could not create a hiredis context: " << ctx_->errstr;
@@ -176,7 +175,7 @@ bool Redox::initHiredis() {
   }
 
   // Attach event loop to hiredis
-  if(redisLibevAttach(evloop_, ctx_) != REDIS_OK) {
+  if (redisLibevAttach(evloop_, ctx_) != REDIS_OK) {
     logger_.fatal() << "Could not attach libev event loop to hiredis.";
     connect_state_ = INIT_ERROR;
     connect_waiter_.notify_all();
@@ -184,14 +183,14 @@ bool Redox::initHiredis() {
   }
 
   // Set the callbacks to be invoked on server connection/disconnection
-  if(redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback) != REDIS_OK) {
+  if (redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback) != REDIS_OK) {
     logger_.fatal() << "Could not attach connect callback to hiredis.";
     connect_state_ = INIT_ERROR;
     connect_waiter_.notify_all();
     return false;
   }
 
-  if(redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback) != REDIS_OK) {
+  if (redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback) != REDIS_OK) {
     logger_.fatal() << "Could not attach disconnect callback to hiredis.";
     connect_state_ = INIT_ERROR;
     connect_waiter_.notify_all();
@@ -202,12 +201,14 @@ bool Redox::initHiredis() {
 }
 
 void Redox::noWait(bool state) {
-  if(state) logger_.info() << "No-wait mode enabled.";
-  else logger_.info() << "No-wait mode disabled.";
+  if (state)
+    logger_.info() << "No-wait mode enabled.";
+  else
+    logger_.info() << "No-wait mode disabled.";
   nowait_ = state;
 }
 
-void breakEventLoop(struct ev_loop* loop, ev_async* async, int revents) {
+void breakEventLoop(struct ev_loop *loop, ev_async *async, int revents) {
   ev_break(loop, EVBREAK_ALL);
 }
 
@@ -222,7 +223,7 @@ void Redox::runEventLoop() {
   connect_waiter_.wait(ul, [this] { return connect_state_ != NOT_YET_CONNECTED; });
 
   // Handle connection error
-  if(connect_state_ != CONNECTED) {
+  if (connect_state_ != CONNECTED) {
     logger_.warning() << "Did not connect, event loop exiting.";
     exited_ = true;
     running_ = false;
@@ -250,7 +251,7 @@ void Redox::runEventLoop() {
   // Run the event loop, using NOWAIT if enabled for maximum
   // throughput by avoiding any sleeping
   while (!to_exit_) {
-    if(nowait_) {
+    if (nowait_) {
       ev_run(evloop_, EVRUN_NOWAIT);
     } else {
       ev_run(evloop_);
@@ -266,14 +267,15 @@ void Redox::runEventLoop() {
   this_thread::sleep_for(chrono::milliseconds(10));
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  if(connect_state_ == CONNECTED) redisAsyncDisconnect(ctx_);
+  if (connect_state_ == CONNECTED)
+    redisAsyncDisconnect(ctx_);
 
   // Run once more to disconnect
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  if(commands_created_ != commands_deleted_) {
-    logger_.error() << "All commands were not freed! "
-         << commands_deleted_ << "/" << commands_created_;
+  if (commands_created_ != commands_deleted_) {
+    logger_.error() << "All commands were not freed! " << commands_deleted_ << "/"
+                    << commands_created_;
   }
 
   exited_ = true;
@@ -285,27 +287,26 @@ void Redox::runEventLoop() {
   logger_.info() << "Event thread exited.";
 }
 
-template<class ReplyT>
-Command<ReplyT>* Redox::findCommand(long id) {
+template <class ReplyT> Command<ReplyT> *Redox::findCommand(long id) {
 
   lock_guard<mutex> lg(command_map_guard_);
 
-  auto& command_map = getCommandMap<ReplyT>();
+  auto &command_map = getCommandMap<ReplyT>();
   auto it = command_map.find(id);
-  if(it == command_map.end()) return nullptr;
+  if (it == command_map.end())
+    return nullptr;
   return it->second;
 }
 
-template<class ReplyT>
-void Redox::commandCallback(redisAsyncContext* ctx, void* r, void* privdata) {
+template <class ReplyT>
+void Redox::commandCallback(redisAsyncContext *ctx, void *r, void *privdata) {
 
-  Redox* rdx = (Redox*) ctx->data;
+  Redox *rdx = (Redox *)ctx->data;
   long id = (long)privdata;
-  redisReply* reply_obj = (redisReply*) r;
+  redisReply *reply_obj = (redisReply *)r;
 
-  Command<ReplyT>* c = rdx->findCommand<ReplyT>(id);
-  if(c == nullptr) {
-//    rdx->logger.warning() << "Couldn't find Command " << id << " in command_map (commandCallback).";
+  Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
+  if (c == nullptr) {
     freeReplyObject(reply_obj);
     return;
   }
@@ -313,26 +314,23 @@ void Redox::commandCallback(redisAsyncContext* ctx, void* r, void* privdata) {
   c->processReply(reply_obj);
 }
 
-template<class ReplyT>
-bool Redox::submitToServer(Command<ReplyT>* c) {
+template <class ReplyT> bool Redox::submitToServer(Command<ReplyT> *c) {
 
-  Redox* rdx = c->rdx_;
+  Redox *rdx = c->rdx_;
   c->pending_++;
 
   // Construct a char** from the vector
-  vector<const char*> argv;
+  vector<const char *> argv;
   transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argv),
-      [](const string& s){ return s.c_str(); }
-  );
+            [](const string &s) { return s.c_str(); });
 
   // Construct a size_t* of string lengths from the vector
   vector<size_t> argvlen;
   transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argvlen),
-      [](const string& s) { return s.size(); }
-  );
+            [](const string &s) { return s.size(); });
 
-  if(redisAsyncCommandArgv(rdx->ctx_, commandCallback<ReplyT>,  (void*) c->id_,
-      argv.size(), &argv[0], &argvlen[0]) != REDIS_OK) {
+  if (redisAsyncCommandArgv(rdx->ctx_, commandCallback<ReplyT>, (void *)c->id_, argv.size(),
+                            &argv[0], &argvlen[0]) != REDIS_OK) {
     rdx->logger_.error() << "Could not send \"" << c->cmd() << "\": " << rdx->ctx_->errstr;
     c->reply_status_ = Command<ReplyT>::SEND_ERROR;
     c->invoke();
@@ -342,34 +340,34 @@ bool Redox::submitToServer(Command<ReplyT>* c) {
   return true;
 }
 
-template<class ReplyT>
-void Redox::submitCommandCallback(struct ev_loop* loop, ev_timer* timer, int revents) {
+template <class ReplyT>
+void Redox::submitCommandCallback(struct ev_loop *loop, ev_timer *timer, int revents) {
 
-  Redox* rdx = (Redox*) ev_userdata(loop);
+  Redox *rdx = (Redox *)ev_userdata(loop);
   long id = (long)timer->data;
 
-  Command<ReplyT>* c = rdx->findCommand<ReplyT>(id);
-  if(c == nullptr) {
+  Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
+  if (c == nullptr) {
     rdx->logger_.error() << "Couldn't find Command " << id
-         << " in command_map (submitCommandCallback).";
+                         << " in command_map (submitCommandCallback).";
     return;
   }
 
   submitToServer<ReplyT>(c);
 }
 
-template<class ReplyT>
-bool Redox::processQueuedCommand(long id) {
+template <class ReplyT> bool Redox::processQueuedCommand(long id) {
 
-  Command<ReplyT>* c = findCommand<ReplyT>(id);
-  if(c == nullptr) return false;
+  Command<ReplyT> *c = findCommand<ReplyT>(id);
+  if (c == nullptr)
+    return false;
 
-  if((c->repeat_ == 0) && (c->after_ == 0)) {
+  if ((c->repeat_ == 0) && (c->after_ == 0)) {
     submitToServer<ReplyT>(c);
 
   } else {
 
-    c->timer_.data = (void*)c->id_;
+    c->timer_.data = (void *)c->id_;
     ev_timer_init(&c->timer_, submitCommandCallback<ReplyT>, c->after_, c->repeat_);
     ev_timer_start(evloop_, &c->timer_);
 
@@ -379,62 +377,64 @@ bool Redox::processQueuedCommand(long id) {
   return true;
 }
 
-void Redox::processQueuedCommands(struct ev_loop* loop, ev_async* async, int revents) {
+void Redox::processQueuedCommands(struct ev_loop *loop, ev_async *async, int revents) {
 
-  Redox* rdx = (Redox*) ev_userdata(loop);
+  Redox *rdx = (Redox *)ev_userdata(loop);
 
   lock_guard<mutex> lg(rdx->queue_guard_);
 
-  while(!rdx->command_queue_.empty()) {
+  while (!rdx->command_queue_.empty()) {
 
     long id = rdx->command_queue_.front();
     rdx->command_queue_.pop();
 
-    if(rdx->processQueuedCommand<redisReply*>(id)) {}
-    else if(rdx->processQueuedCommand<string>(id)) {}
-    else if(rdx->processQueuedCommand<char*>(id)) {}
-    else if(rdx->processQueuedCommand<int>(id)) {}
-    else if(rdx->processQueuedCommand<long long int>(id)) {}
-    else if(rdx->processQueuedCommand<nullptr_t>(id)) {}
-    else if(rdx->processQueuedCommand<vector<string>>(id)) {}
-    else if(rdx->processQueuedCommand<std::set<string>>(id)) {}
-    else if(rdx->processQueuedCommand<unordered_set<string>>(id)) {}
-    else throw runtime_error("Command pointer not found in any queue!");
+    if (rdx->processQueuedCommand<redisReply *>(id)) {
+    } else if (rdx->processQueuedCommand<string>(id)) {
+    } else if (rdx->processQueuedCommand<char *>(id)) {
+    } else if (rdx->processQueuedCommand<int>(id)) {
+    } else if (rdx->processQueuedCommand<long long int>(id)) {
+    } else if (rdx->processQueuedCommand<nullptr_t>(id)) {
+    } else if (rdx->processQueuedCommand<vector<string>>(id)) {
+    } else if (rdx->processQueuedCommand<std::set<string>>(id)) {
+    } else if (rdx->processQueuedCommand<unordered_set<string>>(id)) {
+    } else
+      throw runtime_error("Command pointer not found in any queue!");
   }
 }
 
-void Redox::freeQueuedCommands(struct ev_loop* loop, ev_async* async, int revents) {
+void Redox::freeQueuedCommands(struct ev_loop *loop, ev_async *async, int revents) {
 
-  Redox* rdx = (Redox*) ev_userdata(loop);
+  Redox *rdx = (Redox *)ev_userdata(loop);
 
   lock_guard<mutex> lg(rdx->free_queue_guard_);
 
-  while(!rdx->commands_to_free_.empty()) {
+  while (!rdx->commands_to_free_.empty()) {
     long id = rdx->commands_to_free_.front();
     rdx->commands_to_free_.pop();
 
-    if(rdx->freeQueuedCommand<redisReply*>(id)) {}
-    else if(rdx->freeQueuedCommand<string>(id)) {}
-    else if(rdx->freeQueuedCommand<char*>(id)) {}
-    else if(rdx->freeQueuedCommand<int>(id)) {}
-    else if(rdx->freeQueuedCommand<long long int>(id)) {}
-    else if(rdx->freeQueuedCommand<nullptr_t>(id)) {}
-    else if(rdx->freeQueuedCommand<vector<string>>(id)) {}
-    else if(rdx->freeQueuedCommand<std::set<string>>(id)) {}
-    else if(rdx->freeQueuedCommand<unordered_set<string>>(id)) {}
-    else {}
+    if (rdx->freeQueuedCommand<redisReply *>(id)) {
+    } else if (rdx->freeQueuedCommand<string>(id)) {
+    } else if (rdx->freeQueuedCommand<char *>(id)) {
+    } else if (rdx->freeQueuedCommand<int>(id)) {
+    } else if (rdx->freeQueuedCommand<long long int>(id)) {
+    } else if (rdx->freeQueuedCommand<nullptr_t>(id)) {
+    } else if (rdx->freeQueuedCommand<vector<string>>(id)) {
+    } else if (rdx->freeQueuedCommand<std::set<string>>(id)) {
+    } else if (rdx->freeQueuedCommand<unordered_set<string>>(id)) {
+    } else {
+    }
   }
 }
 
-template<class ReplyT>
-bool Redox::freeQueuedCommand(long id) {
-  Command<ReplyT>* c = findCommand<ReplyT>(id);
-  if(c == nullptr) return false;
+template <class ReplyT> bool Redox::freeQueuedCommand(long id) {
+  Command<ReplyT> *c = findCommand<ReplyT>(id);
+  if (c == nullptr)
+    return false;
 
   c->freeReply();
 
   // Stop the libev timer if this is a repeating command
-  if((c->repeat_ != 0) || (c->after_ != 0)) {
+  if ((c->repeat_ != 0) || (c->after_ != 0)) {
     lock_guard<mutex> lg(c->timer_guard_);
     ev_timer_stop(c->rdx_->evloop_, &c->timer_);
   }
@@ -447,33 +447,28 @@ bool Redox::freeQueuedCommand(long id) {
 }
 
 long Redox::freeAllCommands() {
-  return freeAllCommandsOfType<redisReply*>() +
-      freeAllCommandsOfType<string>() +
-      freeAllCommandsOfType<char*>() +
-      freeAllCommandsOfType<int>() +
-      freeAllCommandsOfType<long long int>() +
-      freeAllCommandsOfType<nullptr_t>() +
-      freeAllCommandsOfType<vector<string>>() +
-      freeAllCommandsOfType<std::set<string>>() +
-      freeAllCommandsOfType<unordered_set<string>>();
+  return freeAllCommandsOfType<redisReply *>() + freeAllCommandsOfType<string>() +
+         freeAllCommandsOfType<char *>() + freeAllCommandsOfType<int>() +
+         freeAllCommandsOfType<long long int>() + freeAllCommandsOfType<nullptr_t>() +
+         freeAllCommandsOfType<vector<string>>() + freeAllCommandsOfType<std::set<string>>() +
+         freeAllCommandsOfType<unordered_set<string>>();
 }
 
-template<class ReplyT>
-long Redox::freeAllCommandsOfType() {
+template <class ReplyT> long Redox::freeAllCommandsOfType() {
 
   lock_guard<mutex> lg(free_queue_guard_);
   lock_guard<mutex> lg2(queue_guard_);
 
-  auto& command_map = getCommandMap<ReplyT>();
+  auto &command_map = getCommandMap<ReplyT>();
   long len = command_map.size();
 
-  for(auto& pair : command_map) {
-    Command<ReplyT>* c = pair.second;
+  for (auto &pair : command_map) {
+    Command<ReplyT> *c = pair.second;
 
     c->freeReply();
 
     // Stop the libev timer if this is a repeating command
-    if((c->repeat_ != 0) || (c->after_ != 0)) {
+    if ((c->repeat_ != 0) || (c->after_ != 0)) {
       lock_guard<mutex> lg3(c->timer_guard_);
       ev_timer_stop(c->rdx_->evloop_, &c->timer_);
     }
@@ -491,89 +486,95 @@ long Redox::freeAllCommandsOfType() {
 // get_command_map specializations
 // ---------------------------------
 
-template<> unordered_map<long, Command<redisReply*>*>&
-Redox::getCommandMap<redisReply*>() { return commands_redis_reply_; }
+template <> unordered_map<long, Command<redisReply *> *> &Redox::getCommandMap<redisReply *>() {
+  return commands_redis_reply_;
+}
 
-template<> unordered_map<long, Command<string>*>&
-Redox::getCommandMap<string>() { return commands_string_; }
+template <> unordered_map<long, Command<string> *> &Redox::getCommandMap<string>() {
+  return commands_string_;
+}
 
-template<> unordered_map<long, Command<char*>*>&
-Redox::getCommandMap<char*>() { return commands_char_p_; }
+template <> unordered_map<long, Command<char *> *> &Redox::getCommandMap<char *>() {
+  return commands_char_p_;
+}
 
-template<> unordered_map<long, Command<int>*>&
-Redox::getCommandMap<int>() { return commands_int_; }
+template <> unordered_map<long, Command<int> *> &Redox::getCommandMap<int>() {
+  return commands_int_;
+}
 
-template<> unordered_map<long, Command<long long int>*>&
-Redox::getCommandMap<long long int>() { return commands_long_long_int_; }
+template <> unordered_map<long, Command<long long int> *> &Redox::getCommandMap<long long int>() {
+  return commands_long_long_int_;
+}
 
-template<> unordered_map<long, Command<nullptr_t>*>&
-Redox::getCommandMap<nullptr_t>() { return commands_null_; }
+template <> unordered_map<long, Command<nullptr_t> *> &Redox::getCommandMap<nullptr_t>() {
+  return commands_null_;
+}
 
-template<> unordered_map<long, Command<vector<string>>*>&
-Redox::getCommandMap<vector<string>>() { return commands_vector_string_; }
+template <> unordered_map<long, Command<vector<string>> *> &Redox::getCommandMap<vector<string>>() {
+  return commands_vector_string_;
+}
 
-template<> unordered_map<long, Command<set<string>>*>&
-Redox::getCommandMap<set<string>>() { return commands_set_string_; }
+template <> unordered_map<long, Command<set<string>> *> &Redox::getCommandMap<set<string>>() {
+  return commands_set_string_;
+}
 
-template<> unordered_map<long, Command<unordered_set<string>>*>&
-Redox::getCommandMap<unordered_set<string>>() { return commands_unordered_set_string_; }
+template <>
+unordered_map<long, Command<unordered_set<string>> *> &
+Redox::getCommandMap<unordered_set<string>>() {
+  return commands_unordered_set_string_;
+}
 
 // ----------------------------
 // Helpers
 // ----------------------------
 
-string Redox::vecToStr(const vector<string>& vec, const char delimiter) {
+string Redox::vecToStr(const vector<string> &vec, const char delimiter) {
   string str;
-  for(size_t i = 0; i < vec.size() - 1; i++)
+  for (size_t i = 0; i < vec.size() - 1; i++)
     str += vec[i] + delimiter;
-  str += vec[vec.size()-1];
+  str += vec[vec.size() - 1];
   return str;
 }
 
-vector<string> Redox::strToVec(const string& s, const char delimiter) {
+vector<string> Redox::strToVec(const string &s, const char delimiter) {
   vector<string> vec;
   size_t last = 0;
   size_t next = 0;
   while ((next = s.find(delimiter, last)) != string::npos) {
-    vec.push_back(s.substr(last, next-last));
+    vec.push_back(s.substr(last, next - last));
     last = next + 1;
   }
   vec.push_back(s.substr(last));
   return vec;
 }
 
-void Redox::command(const std::vector<std::string>& cmd) {
-  command<redisReply*>(cmd, nullptr);
-}
+void Redox::command(const vector<string> &cmd) { command<redisReply *>(cmd, nullptr); }
 
-bool Redox::commandSync(const std::vector<std::string>& cmd) {
-  auto& c = commandSync<redisReply*>(cmd);
+bool Redox::commandSync(const vector<string> &cmd) {
+  auto &c = commandSync<redisReply *>(cmd);
   bool succeeded = c.ok();
   c.free();
   return succeeded;
 }
 
-string Redox::get(const string& key) {
+string Redox::get(const string &key) {
 
-  Command<char*>& c = commandSync<char*>({"GET", key});
-  if(!c.ok()) {
-    throw runtime_error("[FATAL] Error getting key " + key + ": Status code " + to_string(c.status()));
+  Command<char *> &c = commandSync<char *>({"GET", key});
+  if (!c.ok()) {
+    throw runtime_error("[FATAL] Error getting key " + key + ": Status code " +
+                        to_string(c.status()));
   }
   string reply = c.reply();
   c.free();
   return reply;
 };
 
-bool Redox::set(const string& key, const string& value) {
-  return commandSync({"SET", key, value});
-}
+bool Redox::set(const string &key, const string &value) { return commandSync({"SET", key, value}); }
 
-bool Redox::del(const string& key) {
-  return commandSync({"DEL", key});
-}
+bool Redox::del(const string &key) { return commandSync({"DEL", key}); }
 
-void Redox::publish(const string& topic, const string& msg) {
-  command<redisReply*>({"PUBLISH", topic, msg});
+void Redox::publish(const string &topic, const string &msg) {
+  command<redisReply *>({"PUBLISH", topic, msg});
 }
 
 } // End namespace redis

@@ -42,19 +42,17 @@ class Redox;
 * represent a deferred or looping command, in which case the success or
 * error callbacks are invoked more than once.
 */
-template<class ReplyT>
-class Command {
+template <class ReplyT> class Command {
 
 public:
-
   // Reply codes
-  static const int NO_REPLY = -1; // No reply yet
-  static const int OK_REPLY = 0; // Successful reply of the expected type
-  static const int NIL_REPLY = 1; // Got a nil reply
+  static const int NO_REPLY = -1;   // No reply yet
+  static const int OK_REPLY = 0;    // Successful reply of the expected type
+  static const int NIL_REPLY = 1;   // Got a nil reply
   static const int ERROR_REPLY = 2; // Got an error reply
-  static const int SEND_ERROR = 3; // Could not send to server
-  static const int WRONG_TYPE = 4; // Got reply, but it was not the expected type
-  static const int TIMEOUT = 5; // No reply, timed out
+  static const int SEND_ERROR = 3;  // Could not send to server
+  static const int WRONG_TYPE = 4;  // Got reply, but it was not the expected type
+  static const int TIMEOUT = 5;     // No reply, timed out
 
   /**
   * Returns the reply status of this command.
@@ -94,7 +92,7 @@ public:
   std::string cmd() const;
 
   // Allow public access to constructed data
-  Redox* const rdx_;
+  Redox *const rdx_;
   const long id_;
   const std::vector<std::string> cmd_;
   const double repeat_;
@@ -102,26 +100,22 @@ public:
   const bool free_memory_;
 
 private:
-
-  Command(
-      Redox* rdx,
-      long id,
-      const std::vector<std::string>& cmd,
-      const std::function<void(Command<ReplyT>&)>& callback,
-      double repeat, double after,
-      bool free_memory,
-      log::Logger& logger
-  );
+  Command(Redox *rdx, long id, const std::vector<std::string> &cmd,
+          const std::function<void(Command<ReplyT> &)> &callback, double repeat, double after,
+          bool free_memory, log::Logger &logger);
 
   // Handles a new reply from the server
-  void processReply(redisReply* r);
+  void processReply(redisReply *r);
 
   // Invoke a user callback from the reply object. This method is specialized
   // for each ReplyT of Command.
   void parseReplyObject();
 
   // Directly invoke the user callback if it exists
-  void invoke() { if(callback_) callback_(*this); }
+  void invoke() {
+    if (callback_)
+      callback_(*this);
+  }
 
   bool checkErrorReply();
   bool checkNilReply();
@@ -132,10 +126,10 @@ private:
   void freeReply();
 
   // The last server reply
-  redisReply* reply_obj_ = nullptr;
+  redisReply *reply_obj_ = nullptr;
 
   // User callback
-  const std::function<void(Command<ReplyT>&)> callback_;
+  const std::function<void(Command<ReplyT> &)> callback_;
 
   // Place to store the reply value and status.
   ReplyT reply_val_;
@@ -161,13 +155,13 @@ private:
   std::atomic_bool waiting_done_ = {false};
 
   // Passed on from Redox class
-  log::Logger& logger_;
+  log::Logger &logger_;
 
   // Explicitly delete copy constructor and assignment operator,
   // Command objects should never be copied because they hold
   // state with a network resource.
-  Command(const Command&) = delete;
-  Command& operator=(const Command&) = delete;
+  Command(const Command &) = delete;
+  Command &operator=(const Command &) = delete;
 
   friend class Redox;
 };
