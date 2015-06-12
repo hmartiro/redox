@@ -152,7 +152,9 @@ endif()
 # Install (sudo make install)
 # ---------------------------------------------------------
 
-set(CMAKE_INSTALL_PREFIX /usr/)
+if(NOT CMAKE_INSTALL_PREFIX)
+   set(CMAKE_INSTALL_PREFIX /usr/)
+endif(NOT CMAKE_INSTALL_PREFIX)
 
 # Check if it is a 64 bit system
 if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
