@@ -341,13 +341,13 @@ private:
 
   // Variable and CV to know when the event loop starts running
   std::atomic_bool running_ = {false};
-  std::mutex running_waiter_lock_;
+  std::mutex running_lock_;
   std::condition_variable running_waiter_;
 
   // Variable and CV to know when the event loop stops running
   std::atomic_bool to_exit_ = {false}; // Signal to exit
   std::atomic_bool exited_ = {false};  // Event thread exited
-  std::mutex exit_waiter_lock_;
+  std::mutex exit_lock_;
   std::condition_variable exit_waiter_;
 
   // Maps of each Command, fetchable by the unique ID number
