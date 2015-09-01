@@ -130,8 +130,6 @@ Redox::~Redox() {
 }
 
 void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
-  rdx->connect_waiter_.notify_all();
-
   Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
