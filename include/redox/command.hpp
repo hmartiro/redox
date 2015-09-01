@@ -133,7 +133,7 @@ private:
 
   // Place to store the reply value and status.
   ReplyT reply_val_;
-  std::atomic_int reply_status_;
+  int reply_status_;
   std::string last_error_;
 
   // How many messages sent to server but not received reply
