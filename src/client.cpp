@@ -148,8 +148,12 @@ void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
   }
 
   rdx->connect_waiter_.notify_all();
+  {
+    unique_lock<mutex> lk(rdx->connect_lock_);
+    int state = rdx->connect_state_;
+  }
   if (rdx->user_connection_callback_)
-    rdx->user_connection_callback_(rdx->connect_state_);
+    rdx->user_connection_callback_(state);
 }
 
 void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
@@ -168,8 +172,12 @@ void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
 
   rdx->stop();
   rdx->connect_waiter_.notify_all();
+  {
+    unique_lock<mutex> lk(rdx->connect_lock_);
+    int state = rdx->connect_state_;
+  }
   if (rdx->user_connection_callback_)
-    rdx->user_connection_callback_(rdx->connect_state_);
+    rdx->user_connection_callback_(state);
 }
 
 bool Redox::initEv() {
@@ -317,8 +325,11 @@ void Redox::runEventLoop() {
   this_thread::sleep_for(chrono::milliseconds(10));
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  if (connect_state_ == CONNECTED)
-    redisAsyncDisconnect(ctx_);
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    if (connect_state_ == CONNECTED)
+      redisAsyncDisconnect(ctx_);
+  }
 
   // Run once more to disconnect
   ev_run(evloop_, EVRUN_NOWAIT);
