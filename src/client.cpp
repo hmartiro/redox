@@ -334,9 +334,11 @@ void Redox::runEventLoop() {
   // Run once more to disconnect
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  if (commands_created_ != commands_deleted_) {
-    logger_.error() << "All commands were not freed! " << commands_deleted_ << "/"
-                    << commands_created_;
+  long created = commands_created_;
+  long deleted = commands_deleted_;
+  if (created != deleted) {
+    logger_.error() << "All commands were not freed! " << deleted << "/"
+                    << created;
   }
 
   {
