@@ -393,9 +393,11 @@ template <class ReplyT>
 Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
                                       const std::function<void(Command<ReplyT> &)> &callback,
                                       double repeat, double after, bool free_memory) {
-
-  if (!running_) {
-    throw std::runtime_error("[ERROR] Need to connect Redox before running commands!");
+  {
+    unique_lock<mutex> ul(running_lock_);
+    if (!running_) {
+      throw std::runtime_error("[ERROR] Need to connect Redox before running commands!");
+    }
   }
 
   commands_created_ += 1;
