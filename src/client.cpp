@@ -93,7 +93,10 @@ bool Redox::connectUnix(const string &path, function<void(int)> connection_callb
   }
 
   // Return if succeeded
-  return connect_state_ == CONNECTED;
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    return connect_state_ == CONNECTED;
+  }
 }
 
 void Redox::disconnect() {
