@@ -282,6 +282,7 @@ void Redox::runEventLoop() {
       }
 
       running_waiter_.notify_one();
+      exit_waiter_.notify_one();
       return;
     }
   }
