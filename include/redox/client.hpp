@@ -400,9 +400,8 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
     }
   }
 
-  commands_created_ += 1;
-  auto *c = new Command<ReplyT>(this, commands_created_, cmd, callback, repeat, after, free_memory,
-                                logger_);
+  auto *c = new Command<ReplyT>(this, std::atomic_fetch_add(commands_created_, 1), cmd, 
+                                callback, repeat, after, free_memory, logger_);
 
   std::lock_guard<std::mutex> lg(queue_guard_);
   std::lock_guard<std::mutex> lg2(command_map_guard_);
