@@ -148,9 +148,10 @@ void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
   }
 
   rdx->connect_waiter_.notify_all();
+  int state;
   {
     unique_lock<mutex> lk(rdx->connect_lock_);
-    int state = rdx->connect_state_;
+    state = rdx->connect_state_;
   }
   if (rdx->user_connection_callback_)
     rdx->user_connection_callback_(state);
@@ -172,9 +173,10 @@ void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
 
   rdx->stop();
   rdx->connect_waiter_.notify_all();
+  int state;
   {
     unique_lock<mutex> lk(rdx->connect_lock_);
-    int state = rdx->connect_state_;
+    state = rdx->connect_state_;
   }
   if (rdx->user_connection_callback_)
     rdx->user_connection_callback_(state);
