@@ -19,6 +19,8 @@
 */
 
 #include <iostream>
+#include <thread>
+#include <condition_variable>
 
 #include "redox.hpp"
 #include "gtest/gtest.h"
@@ -238,6 +240,106 @@ TEST_F(RedoxTest, GetSetSyncError) {
   print_and_check_sync<string>(rdx.commandSync<string>({"SET", "redox_test:a", "apple"}), "OK");
   print_and_check_error_sync<int>(rdx.commandSync<int>({"GET", "redox_test:a"}), 3);
   rdx.disconnect();
+}
+
+TEST_F(RedoxTest, TestMultithreadedCRUD)
+{
+    connect();
+
+    int createCount(0);
+//    int updateCount(0);
+    int deleteCount(0);
+
+    int createExcCount(0);
+//    int updateExcCount(0);
+    int deleteExcCount(0);
+
+    std::mutex startMutex;
+    bool start = false;
+    std::condition_variable startCv;
+
+    const int count = 10000;
+
+    std::thread createThread([&]()
+    {
+        {
+            std::unique_lock<std::mutex> lock(startMutex);
+            startCv.wait(lock, [&]() { return start; });
+        }
+
+        for (int i = 0; i < count; ++i)
+        {
+            try
+            {
+                rdx.commandSync<string>({"SET", "redox_test:mt", "create"});
+            }
+            catch (...)
+            {
+                createExcCount++;
+            }
+
+            createCount++;
+        }
+    });
+//    std::thread updateThread([&]()
+//    {
+//        {
+//            std::unique_lock<std::mutex> lock(startMutex);
+//            startCv.wait(lock, [&]() { return start; });
+//        }
+
+//        for (int i = 0; i < count; ++i)
+//        {
+//            try
+//            {
+//                rdx.commandSync<string>({"SET", "redox_test:mt", "update"});
+//            }
+//            catch (...)
+//            {
+//                updateExcCount++;
+//            }
+
+//            updateCount++;
+//        }
+//    });
+    std::thread deleteThread([&]()
+    {
+        {
+            std::unique_lock<std::mutex> lock(startMutex);
+            startCv.wait(lock, [&]() { return start; });
+        }
+
+        for (int i = 0; i < count; ++i)
+        {
+            try
+            {
+                rdx.commandSync<int>({"DEL", "redox_test:mt"});
+            }
+            catch (...)
+            {
+                deleteExcCount++;
+            }
+            deleteCount++;
+        }
+    });
+
+    // Start threads
+    {
+        std::lock_guard<std::mutex> lock(startMutex);
+        start = true;
+    }
+    startCv.notify_all();
+
+    // Wait for threads to finish
+    createThread.join();
+//    updateThread.join();
+    deleteThread.join();
+
+    EXPECT_EQ(count, createCount);
+//    EXPECT_EQ(count, updateCount);
+    EXPECT_EQ(count, deleteCount);
+//    std::cout << "Exception counts: " << createExcCount << " " << updateExcCount << " " << deleteExcCount << std::endl;
+    std::cout << "Exception counts: " << createExcCount << " " << deleteExcCount << std::endl;
 }
 
 // -------------------------------------------

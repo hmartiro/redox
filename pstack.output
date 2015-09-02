@@ -1,0 +1,51 @@
+[bramv@fedora64 build]$ ./test_redox --gtest_filter="RedoxTest.TestMultithreadedCRUD"
+Note: Google Test filter = RedoxTest.TestMultithreadedCRUD
+[==========] Running 1 test from 1 test case.
+[----------] Global test environment set-up.
+[----------] 1 test from RedoxTest
+[ RUN      ] RedoxTest.TestMultithreadedCRUD
+
+From other terminal:
+
+[bramv@fedora64 build]$ ps -ef | grep test_redox
+bramv     8344  6120  6 16:31 pts/5    00:00:02 ./test_redox --gtest_filter=RedoxTest.TestMultithreadedCRUD
+bramv     8414  8351  0 16:31 pts/25   00:00:00 grep --color=auto test_redox
+[bramv@fedora64 build]$ pstack 8344
+Thread 3 (Thread 0x7f476762a700 (LWP 8345)):
+#0  0x00007f4767938833 in epoll_wait () from /lib64/libc.so.6
+#1  0x00007f476884ee65 in epoll_poll () from /lib64/libev.so.4
+#2  0x00007f4768851405 in ev_run () from /lib64/libev.so.4
+#3  0x00007f4768d11911 in redox::Redox::runEventLoop (this=0xb5fd50) at /home/bramv/src/redox/src/client.cpp:256
+#4  0x00007f4768d15a18 in redox::Redox::connect(std::string const&, int, std::function<void (int)>)::$_0::operator()() const (this=0xb62718) at /home/bramv/src/redox/src/client.cpp:50
+#5  0x00007f4768d159d5 in std::_Bind_simple<redox::Redox::connect(std::string const&, int, std::function<void (int)>)::$_0 ()>::_M_invoke<>(std::_Index_tuple<>) (this=0xb62718) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/functional:1699
+#6  0x00007f4768d159a5 in std::_Bind_simple<redox::Redox::connect(std::string const&, int, std::function<void (int)>)::$_0 ()>::operator()() (this=0xb62718) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/functional:1688
+#7  0x00007f4768d1597c in std::thread::_Impl<std::_Bind_simple<redox::Redox::connect(std::string const&, int, std::function<void (int)>)::$_0 ()> >::_M_run() (this=0xb62700) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/thread:115
+#8  0x00007f47681cee00 in ?? () from /lib64/libstdc++.so.6
+#9  0x00007f476863552a in start_thread () from /lib64/libpthread.so.0
+#10 0x00007f476793822d in clone () from /lib64/libc.so.6
+Thread 2 (Thread 0x7f4766628700 (LWP 8347)):
+#0  0x00007f476863a590 in pthread_cond_wait@@GLIBC_2.3.2 () from /lib64/libpthread.so.0
+#1  0x00007f47681cad5c in std::condition_variable::wait(std::unique_lock<std::mutex>&) () from /lib64/libstdc++.so.6
+#2  0x00007f4768d39e01 in std::condition_variable::wait<redox::Command<int>::wait()::{lambda()#1}>(std::unique_lock<std::mutex>&, redox::Command<int>::wait()::{lambda()#1}) (this=0x7f4758022f70, __lock=..., __p=...) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/condition_variable:98
+#3  0x00007f4768d39d75 in redox::Command<int>::wait (this=0x7f4758022e70) at /home/bramv/src/redox/src/command.cpp:47
+#4  0x000000000042399d in redox::Redox::commandSync<int> (this=0xb5fd50, cmd=warning: Type size unknown, assuming 1. Try casting to a known type, or void *.
+#5  0x00000000004169e1 in (anonymous namespace)::RedoxTest_TestMultithreadedCRUD_Test::TestBody()::$_2::operator()() const (this=0xb62e68) at /home/bramv/src/redox/test/test.cpp:335
+#6  0x0000000000416835 in std::_Bind_simple<(anonymous namespace)::RedoxTest_TestMultithreadedCRUD_Test::TestBody()::$_2 ()>::_M_invoke<>(std::_Index_tuple<>) (this=0xb62e68) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/functional:1699
+#7  0x0000000000416805 in std::_Bind_simple<(anonymous namespace)::RedoxTest_TestMultithreadedCRUD_Test::TestBody()::$_2 ()>::operator()() (this=0xb62e68) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/functional:1688
+#8  0x00000000004167dc in std::thread::_Impl<std::_Bind_simple<(anonymous namespace)::RedoxTest_TestMultithreadedCRUD_Test::TestBody()::$_2 ()> >::_M_run() (this=0xb62e50) at /usr/bin/../lib/gcc/x86_64-redhat-linux/4.9.2/../../../../include/c++/4.9.2/thread:115
+#9  0x00007f47681cee00 in ?? () from /lib64/libstdc++.so.6
+#10 0x00007f476863552a in start_thread () from /lib64/libpthread.so.0
+#11 0x00007f476793822d in clone () from /lib64/libc.so.6
+Thread 1 (Thread 0x7f476915e740 (LWP 8344)):
+#0  0x00007f47686365e5 in pthread_join () from /lib64/libpthread.so.0
+#1  0x00007f47681cec97 in std::thread::join() () from /lib64/libstdc++.so.6
+#2  0x0000000000414d6d in (anonymous namespace)::RedoxTest_TestMultithreadedCRUD_Test::TestBody (this=0xb5fd40) at /home/bramv/src/redox/test/test.cpp:355
+#3  0x00007f4768a9d733 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) () from /lib64/libgtest.so.0
+#4  0x00007f4768a917ba in testing::Test::Run() () from /lib64/libgtest.so.0
+#5  0x00007f4768a91908 in testing::TestInfo::Run() () from /lib64/libgtest.so.0
+#6  0x00007f4768a919e5 in testing::TestCase::Run() () from /lib64/libgtest.so.0
+#7  0x00007f4768a91cf0 in testing::internal::UnitTestImpl::RunAllTests() () from /lib64/libgtest.so.0
+#8  0x00007f4768a9dca3 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) () from /lib64/libgtest.so.0
+#9  0x00007f4768a91fb3 in testing::UnitTest::Run() () from /lib64/libgtest.so.0
+#10 0x0000000000422b61 in RUN_ALL_TESTS () at /usr/include/gtest/gtest.h:2326
+#11 0x00000000004149eb in main (argc=1, argv=0x7ffeb73af0a8) at /home/bramv/src/redox/test/test.cpp:372
