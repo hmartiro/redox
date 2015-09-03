@@ -398,8 +398,8 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
     throw std::runtime_error("[ERROR] Need to connect Redox before running commands!");
   }
 
-  commands_created_ += 1;
-  auto *c = new Command<ReplyT>(this, commands_created_, cmd, callback, repeat, after, free_memory,
+  auto id = ++commands_created_;
+  auto *c = new Command<ReplyT>(this, id, cmd, callback, repeat, after, free_memory,
                                 logger_);
 
   std::lock_guard<std::mutex> lg(queue_guard_);
