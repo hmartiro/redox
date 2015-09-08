@@ -163,9 +163,7 @@ private:
 
   // CVs to wait for unsubscriptions
   std::condition_variable cv_unsub_;
-  std::mutex cv_unsub_guard_;
   std::condition_variable cv_punsub_;
-  std::mutex cv_punsub_guard_;
 
   // Pending subscriptions
   std::atomic_int num_pending_subs_ = {0};

@@ -49,11 +49,20 @@ bool Redox::connect(const string &host, const int port,
 
   // Block until connected and running the event loop, or until
   // a connection error happens and the event loop exits
-  unique_lock<mutex> ul(running_waiter_lock_);
-  running_waiter_.wait(ul, [this] { return running_.load() || connect_state_ == CONNECT_ERROR; });
+  {
+    unique_lock<mutex> ul(running_lock_);
+    running_waiter_.wait(ul, [this]
+    {
+      unique_lock<mutex>(connect_lock_);
+      return running_.load() || connect_state_ == CONNECT_ERROR;
+    });
+  }
 
   // Return if succeeded
-  return connect_state_ == CONNECTED;
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    return connect_state_ == CONNECTED;
+  }
 }
 
 bool Redox::connectUnix(const string &path, function<void(int)> connection_callback) {
@@ -74,11 +83,20 @@ bool Redox::connectUnix(const string &path, function<void(int)> connection_callb
 
   // Block until connected and running the event loop, or until
   // a connection error happens and the event loop exits
-  unique_lock<mutex> ul(running_waiter_lock_);
-  running_waiter_.wait(ul, [this] { return running_.load() || connect_state_ == CONNECT_ERROR; });
+  {
+    unique_lock<mutex> ul(running_lock_);
+    running_waiter_.wait(ul, [this]
+    {
+      unique_lock<mutex> ul(connect_lock_);
+      return running_.load() || connect_state_ == CONNECT_ERROR;
+    });
+  }
 
   // Return if succeeded
-  return connect_state_ == CONNECTED;
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    return connect_state_ == CONNECTED;
+  }
 }
 
 void Redox::disconnect() {
@@ -93,7 +111,7 @@ void Redox::stop() {
 }
 
 void Redox::wait() {
-  unique_lock<mutex> ul(exit_waiter_lock_);
+  unique_lock<mutex> ul(exit_lock_);
   exit_waiter_.wait(ul, [this] { return exited_.load(); });
 }
 
@@ -112,24 +130,30 @@ Redox::~Redox() {
 }
 
 void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
-
   Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
     rdx->logger_.fatal() << "Could not connect to Redis: " << ctx->errstr;
     rdx->logger_.fatal() << "Status: " << status;
+    unique_lock<mutex> lk(rdx->connect_lock_);
     rdx->connect_state_ = CONNECT_ERROR;
 
   } else {
+    rdx->logger_.info() << "Connected to Redis.";
+    unique_lock<mutex> lk(rdx->connect_lock_);
     // Disable hiredis automatically freeing reply objects
     ctx->c.reader->fn->freeObject = [](void *reply) {};
     rdx->connect_state_ = CONNECTED;
-    rdx->logger_.info() << "Connected to Redis.";
   }
 
+  int state;
+  {
+    unique_lock<mutex> lk(rdx->connect_lock_);
+    state = rdx->connect_state_;
+  }
   rdx->connect_waiter_.notify_all();
   if (rdx->user_connection_callback_)
-    rdx->user_connection_callback_(rdx->connect_state_);
+    rdx->user_connection_callback_(state);
 }
 
 void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
@@ -138,16 +162,23 @@ void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
 
   if (status != REDIS_OK) {
     rdx->logger_.error() << "Disconnected from Redis on error: " << ctx->errstr;
+    unique_lock<mutex> lk(rdx->connect_lock_);
     rdx->connect_state_ = DISCONNECT_ERROR;
   } else {
     rdx->logger_.info() << "Disconnected from Redis as planned.";
+    unique_lock<mutex> lk(rdx->connect_lock_);
     rdx->connect_state_ = DISCONNECTED;
   }
 
   rdx->stop();
+  int state;
+  {
+    unique_lock<mutex> lk(rdx->connect_lock_);
+    state = rdx->connect_state_;
+  }
   rdx->connect_waiter_.notify_all();
   if (rdx->user_connection_callback_)
-    rdx->user_connection_callback_(rdx->connect_state_);
+    rdx->user_connection_callback_(state);
 }
 
 bool Redox::initEv() {
@@ -155,7 +186,10 @@ bool Redox::initEv() {
   evloop_ = ev_loop_new(EVFLAG_AUTO);
   if (evloop_ == nullptr) {
     logger_.fatal() << "Could not create a libev event loop.";
-    connect_state_ = INIT_ERROR;
+    {
+      unique_lock<mutex> lk(connect_lock_);
+      connect_state_ = INIT_ERROR;
+    }
     connect_waiter_.notify_all();
     return false;
   }
@@ -169,7 +203,10 @@ bool Redox::initHiredis() {
 
   if (ctx_->err) {
     logger_.fatal() << "Could not create a hiredis context: " << ctx_->errstr;
-    connect_state_ = INIT_ERROR;
+    {
+      unique_lock<mutex> lk(connect_lock_);
+      connect_state_ = INIT_ERROR;
+    }
     connect_waiter_.notify_all();
     return false;
   }
@@ -177,7 +214,10 @@ bool Redox::initHiredis() {
   // Attach event loop to hiredis
   if (redisLibevAttach(evloop_, ctx_) != REDIS_OK) {
     logger_.fatal() << "Could not attach libev event loop to hiredis.";
-    connect_state_ = INIT_ERROR;
+    {
+      unique_lock<mutex> lk(connect_lock_);
+      connect_state_ = INIT_ERROR;
+    }
     connect_waiter_.notify_all();
     return false;
   }
@@ -185,14 +225,20 @@ bool Redox::initHiredis() {
   // Set the callbacks to be invoked on server connection/disconnection
   if (redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback) != REDIS_OK) {
     logger_.fatal() << "Could not attach connect callback to hiredis.";
-    connect_state_ = INIT_ERROR;
+    {
+      unique_lock<mutex> lk(connect_lock_);
+      connect_state_ = INIT_ERROR;
+    }
     connect_waiter_.notify_all();
     return false;
   }
 
   if (redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback) != REDIS_OK) {
     logger_.fatal() << "Could not attach disconnect callback to hiredis.";
-    connect_state_ = INIT_ERROR;
+    {
+      unique_lock<mutex> lk(connect_lock_);
+      connect_state_ = INIT_ERROR;
+    }
     connect_waiter_.notify_all();
     return false;
   }
@@ -219,16 +265,27 @@ void Redox::runEventLoop() {
   ev_run(evloop_, EVRUN_NOWAIT);
 
   // Block until connected to Redis, or error
-  unique_lock<mutex> ul(connect_lock_);
-  connect_waiter_.wait(ul, [this] { return connect_state_ != NOT_YET_CONNECTED; });
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    connect_waiter_.wait(ul, [this] { return connect_state_ != NOT_YET_CONNECTED; });
 
-  // Handle connection error
-  if (connect_state_ != CONNECTED) {
-    logger_.warning() << "Did not connect, event loop exiting.";
-    exited_ = true;
-    running_ = false;
-    running_waiter_.notify_one();
-    return;
+    // Handle connection error
+    if (connect_state_ != CONNECTED) {
+      logger_.warning() << "Did not connect, event loop exiting.";
+      {
+        unique_lock<mutex> ul(exit_lock_);
+        exited_ = true;
+      }
+
+      {
+        unique_lock<mutex> ul(running_lock_);
+        running_ = false;
+      }
+
+      running_waiter_.notify_one();
+      exit_waiter_.notify_one();
+      return;
+    }
   }
 
   // Set up asynchronous watcher which we signal every
@@ -245,8 +302,11 @@ void Redox::runEventLoop() {
   ev_async_init(&watcher_free_, freeQueuedCommands);
   ev_async_start(evloop_, &watcher_free_);
 
-  running_ = true;
-  running_waiter_.notify_one();
+  {
+    unique_lock<mutex> ul(running_lock_);
+    running_ = true;
+    running_waiter_.notify_one();
+  }
 
   // Run the event loop, using NOWAIT if enabled for maximum
   // throughput by avoiding any sleeping
@@ -267,21 +327,37 @@ void Redox::runEventLoop() {
   this_thread::sleep_for(chrono::milliseconds(10));
   ev_run(evloop_, EVRUN_NOWAIT);
 
+  int state;
+  {
+    unique_lock<mutex> ul(connect_lock_);
+    state = connect_state_;
+  }
+  
   if (connect_state_ == CONNECTED)
     redisAsyncDisconnect(ctx_);
 
   // Run once more to disconnect
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  if (commands_created_ != commands_deleted_) {
-    logger_.error() << "All commands were not freed! " << commands_deleted_ << "/"
-                    << commands_created_;
+  long created = commands_created_;
+  long deleted = commands_deleted_;
+  if (created != deleted) {
+    logger_.error() << "All commands were not freed! " << deleted << "/"
+                    << created;
   }
 
-  exited_ = true;
-  running_ = false;
+  {
+    unique_lock<mutex> ul(exit_lock_);
+    exited_ = true;
+  }
+
+  {
+    unique_lock<mutex> ul(running_lock_);
+    running_ = false;
+  }
 
   // Let go for block_until_stopped method
+  running_waiter_.notify_one();
   exit_waiter_.notify_one();
 
   logger_.info() << "Event thread exited.";
@@ -458,6 +534,7 @@ template <class ReplyT> long Redox::freeAllCommandsOfType() {
 
   lock_guard<mutex> lg(free_queue_guard_);
   lock_guard<mutex> lg2(queue_guard_);
+  lock_guard<mutex> lg3(command_map_guard_);
 
   auto &command_map = getCommandMap<ReplyT>();
   long len = command_map.size();
