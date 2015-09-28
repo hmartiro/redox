@@ -309,12 +309,20 @@ private:
   // Helper function for freeAllCommands to access a specific command map
   template <class ReplyT> long freeAllCommandsOfType();
 
+  // Helper functions to get/set variables with synchronization.
+  int getConnectState();
+  void setConnectState(int connect_state);
+  int getRunning();
+  void setRunning(bool running);
+  int getExited();
+  void setExited(bool exited);
+
   // ------------------------------------------------
   // Private members
   // ------------------------------------------------
 
   // Manage connection state
-  std::atomic_int connect_state_ = {NOT_YET_CONNECTED};
+  int connect_state_ = NOT_YET_CONNECTED;
   std::mutex connect_lock_;
   std::condition_variable connect_waiter_;
 
@@ -340,13 +348,13 @@ private:
   std::thread event_loop_thread_;
 
   // Variable and CV to know when the event loop starts running
-  std::atomic_bool running_ = {false};
+  bool running_ = false;
   std::mutex running_lock_;
   std::condition_variable running_waiter_;
 
   // Variable and CV to know when the event loop stops running
   std::atomic_bool to_exit_ = {false}; // Signal to exit
-  std::atomic_bool exited_ = {false};  // Event thread exited
+  bool exited_ = false;  // Event thread exited
   std::mutex exit_lock_;
   std::condition_variable exit_waiter_;
 
