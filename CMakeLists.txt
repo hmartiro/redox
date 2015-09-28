@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 2.8.4)
 project(redox)
 
 set(REDOX_VERSION_MAJOR 0)
-set(REDOX_VERSION_MINOR 2)
-set(REDOX_VERSION_PATCH 3)
+set(REDOX_VERSION_MINOR 3)
+set(REDOX_VERSION_PATCH 0)
 set(REDOX_VERSION_STRING ${REDOX_VERSION_MAJOR}.${REDOX_VERSION_MINOR}.${REDOX_VERSION_PATCH})
 
 option(lib "Build Redox as a dynamic library." ON)

@@ -240,6 +240,64 @@ TEST_F(RedoxTest, GetSetSyncError) {
   rdx.disconnect();
 }
 
+TEST_F(RedoxTest, MultithreadedCRUD) {
+  connect();
+  int create_count(0);
+  int delete_count(0);
+  int createExcCount(0);
+  int deleteExcCount(0);
+
+  std::mutex startMutex;
+  bool start = false;
+  std::condition_variable start_cv;
+  const int count = 10000;
+
+  std::thread create_thread([&]() {
+    {
+      std::unique_lock<std::mutex> lock(startMutex);
+      start_cv.wait(lock, [&]() { return start; });
+    }
+    for (int i = 0; i < count; ++i) {
+      try {
+        rdx.commandSync<string>({"SET", "redox_test:mt", "create"});
+      }
+      catch (...) {
+        createExcCount++;
+      }
+      create_count++;
+    }
+  });
+
+  std::thread delete_thread([&]() {
+    {
+      std::unique_lock<std::mutex> lock(startMutex);
+      start_cv.wait(lock, [&]() { return start; });
+    }
+    for (int i = 0; i < count; ++i) {
+      try {
+        rdx.commandSync<int>({"DEL", "redox_test:mt"});
+      }
+      catch (...) {
+        deleteExcCount++;
+      }
+      delete_count++;
+    }
+  });
+
+  // Start threads
+  {
+    std::lock_guard<std::mutex> lock(startMutex);
+    start = true;
+  }
+  start_cv.notify_all();
+
+  // Wait for threads to finish
+  create_thread.join();
+  delete_thread.join();
+  EXPECT_EQ(count, create_count);
+  EXPECT_EQ(count, delete_count);
+}
+
 // -------------------------------------------
 // End tests
 // -------------------------------------------
