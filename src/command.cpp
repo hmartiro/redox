@@ -64,7 +64,10 @@ template <class ReplyT> void Command<ReplyT>::processReply(redisReply *r) {
 
   pending_--;
 
-  waiting_done_ = true;
+  {
+    unique_lock<mutex> lk(waiter_lock_);
+    waiting_done_ = true;
+  }
   waiter_.notify_all();
 
   // Always free the reply object for repeating commands
