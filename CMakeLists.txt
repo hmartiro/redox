@@ -17,9 +17,26 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # Print out compiler commands
 # set(CMAKE_VERBOSE_MAKEFILE ON)
+
+# ---------------------------------------------------------
+# Check for required dependencies
+# ---------------------------------------------------------
+if(CMAKE_VERSION VERSION_GREATER 2.8.5 OR CMAKE_VERSION VERSION_EQUAL 2.8.5)
+  include(GNUInstallDirs)
+endif()
+
+find_package(Threads REQUIRED)
+find_package(hiredis REQUIRED)
+find_package(libev REQUIRED)
+
+set(REDOX_LIB_DEPS
+  ${HIREDIS_LIBRARIES}
+  ${LIBEV_LIBRARIES}
+  ${CMAKE_THREAD_LIBS_INIT})
 
 # ---------------------------------------------------------
 # Source files
@@ -48,11 +65,6 @@ set(INC_REDOX_ALL ${INC_REDOX_CORE} ${INC_REDOX_UTILS} ${INC_REDOX_WRAPPER})
 
 include_directories(${INC_REDOX_DIR})
 include_directories(${INC_REDOX_DIR}/redox)
-
-# Dependent libraries - you may have to change
-# pthread to whatever C++11 threads depends on
-# for your platform
-set(REDOX_LIB_DEPS ev pthread hiredis)
 
 # ---------------------------------------------------------
 # Library generation
