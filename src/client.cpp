@@ -24,6 +24,28 @@
 
 using namespace std;
 
+namespace {
+
+template<typename tev, typename tcb>
+void redox_ev_async_init(tev ev, tcb cb)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+    ev_async_init(ev,cb);
+#pragma GCC diagnostic pop
+}
+
+template<typename ttimer, typename tcb, typename tafter, typename trepeat>
+void redox_ev_timer_init(ttimer timer, tcb cb, tafter after, trepeat repeat)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+    ev_timer_init(timer,cb,after,repeat);
+#pragma GCC diagnostic pop
+}
+
+} // anonymous
+
 namespace redox {
 
 Redox::Redox(ostream &log_stream, log::Level log_level)
@@ -275,16 +297,16 @@ void Redox::runEventLoop() {
 
   // Set up asynchronous watcher which we signal every
   // time we add a command
-  ev_async_init(&watcher_command_, processQueuedCommands);
+  redox_ev_async_init(&watcher_command_, processQueuedCommands);
   ev_async_start(evloop_, &watcher_command_);
 
   // Set up an async watcher to break the loop
-  ev_async_init(&watcher_stop_, breakEventLoop);
+  redox_ev_async_init(&watcher_stop_, breakEventLoop);
   ev_async_start(evloop_, &watcher_stop_);
 
   // Set up an async watcher which we signal every time
   // we want a command freed
-  ev_async_init(&watcher_free_, freeQueuedCommands);
+  redox_ev_async_init(&watcher_free_, freeQueuedCommands);
   ev_async_start(evloop_, &watcher_free_);
 
   setRunning(true);
@@ -307,7 +329,7 @@ void Redox::runEventLoop() {
   // Wait to receive server replies for clean hiredis disconnect
   this_thread::sleep_for(chrono::milliseconds(10));
   ev_run(evloop_, EVRUN_NOWAIT);
-  
+
   if (getConnectState() == CONNECTED) {
     redisAsyncDisconnect(ctx_);
   }
@@ -410,7 +432,7 @@ template <class ReplyT> bool Redox::processQueuedCommand(long id) {
   } else {
 
     c->timer_.data = (void *)c->id_;
-    ev_timer_init(&c->timer_, submitCommandCallback<ReplyT>, c->after_, c->repeat_);
+    redox_ev_timer_init(&c->timer_, submitCommandCallback<ReplyT>, c->after_, c->repeat_);
     ev_timer_start(evloop_, &c->timer_);
 
     c->timer_guard_.unlock();
@@ -610,7 +632,7 @@ string Redox::get(const string &key) {
   string reply = c.reply();
   c.free();
   return reply;
-};
+}
 
 bool Redox::set(const string &key, const string &value) { return commandSync({"SET", key, value}); }
 
