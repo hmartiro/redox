@@ -94,14 +94,14 @@ public:
   * true once everything is ready, or false on failure.
   */
   bool connect(const std::string &host = REDIS_DEFAULT_HOST, const int port = REDIS_DEFAULT_PORT,
-               std::function<void(int)> connection_callback = nullptr);
+	       std::function<void(int)> connection_callback = nullptr);
 
   /**
   * Connects to Redis over a unix socket and starts an event loop in a separate
   * thread. Returns true once everything is ready, or false on failure.
   */
   bool connectUnix(const std::string &path = REDIS_DEFAULT_PATH,
-                   std::function<void(int)> connection_callback = nullptr);
+		   std::function<void(int)> connection_callback = nullptr);
 
   /**
   * Disconnect from Redis, shut down the event loop, then return. A simple
@@ -129,7 +129,7 @@ public:
 
   template <class ReplyT>
   void command(const std::vector<std::string> &cmd,
-               const std::function<void(Command<ReplyT> &)> &callback = nullptr);
+	       const std::function<void(Command<ReplyT> &)> &callback = nullptr);
 
   /**
   * Asynchronously runs a command and ignores any errors or replies.
@@ -159,8 +159,8 @@ public:
 
   template <class ReplyT>
   Command<ReplyT> &commandLoop(const std::vector<std::string> &cmd,
-                               const std::function<void(Command<ReplyT> &)> &callback,
-                               double repeat, double after = 0.0);
+			       const std::function<void(Command<ReplyT> &)> &callback,
+			       double repeat, double after = 0.0);
 
   /**
   * Creates an asynchronous command that is run once after a given
@@ -171,7 +171,7 @@ public:
 
   template <class ReplyT>
   void commandDelayed(const std::vector<std::string> &cmd,
-                      const std::function<void(Command<ReplyT> &)> &callback, double after);
+		      const std::function<void(Command<ReplyT> &)> &callback, double after);
 
   // ------------------------------------------------
   // Utility methods
@@ -212,10 +212,98 @@ public:
   bool del(const std::string &key);
 
   /**
+  * Redis EXISTS command wrapper - synchronous
+  *
+  * @param key key looked up
+  *
+  * @return True if key exists, otherwise false
+  */
+  bool exists(const std::string &key);
+
+  /**
   * Redis PUBLISH command wrapper - publish the given message to all subscribers.
   * Non-blocking call.
   */
   void publish(const std::string &topic, const std::string &msg);
+
+
+  //----------------------------------------------------------------------------
+  // Redis SET command wrappers
+  //----------------------------------------------------------------------------
+
+  /**
+   * Redis SET add command wrapper - synchronous
+   *
+   * @param key name of the set
+   * @param member value to be added to the set
+   *
+   * @return true if member removed, otherwise false
+   **/
+  bool sadd(const std::string &key, const std::string &member);
+
+
+
+  /**
+   * Redis SET add command wrapper for multiple members - synchronous
+   *
+   * @param key name of the set
+   * @param vect_members values to be added to the set
+   * TODO: make vect_members rvalue ref to use move semantics
+   *
+   * @return number of elements added to the set
+   **/
+  long long int sadd(const std::string &key,
+		     std::vector<std::string> vect_members);
+
+  /**
+   * Redis SET remove command wrapper - synchronous
+   *
+   * @param key name of the set
+   * @param member value to be removed from the set
+   *
+   * @return true if member removed, otherwise false
+   **/
+  bool srem(const std::string &key, const std::string &member);
+
+  /**
+   * Redis SET remove command wrapper for multiple members - synchronous
+   *
+   * @param key name of the set
+   * @param vect_members values to be removed from the set
+   *
+   * @return number of elements removed from the set
+   **/
+  long long int srem(const std::string &key,
+		     std::vector<std::string> vect_members);
+
+  /**
+   * Redis SET size command wrapper - synchronous
+   *
+   * @param key name of the set
+   *
+   * @return size of the set
+   **/
+  long long int scard(const std::string &key);
+
+  /**
+   * Redis SET ismember command wrapper - synchronous
+   *
+   * @param key name of the set
+   * @param member value to be searched in the set
+   *
+   * @return true if member in the set, otherwise false
+   **/
+  bool sismember(const std::string &key, const std::string& member);
+
+  /**
+   * Redis SET members command wrapper - synchronous
+   *
+   * @param key name of the set
+    *
+   * @return set containing the members of the set
+   **/
+  std::set<std::string> smembers(const std::string &key);
+
 
   // ------------------------------------------------
   // Public members
@@ -247,8 +335,8 @@ private:
   // methods that run commands.
   template <class ReplyT>
   Command<ReplyT> &createCommand(const std::vector<std::string> &cmd,
-                                 const std::function<void(Command<ReplyT> &)> &callback = nullptr,
-                                 double repeat = 0.0, double after = 0.0, bool free_memory = true);
+				 const std::function<void(Command<ReplyT> &)> &callback = nullptr,
+				 double repeat = 0.0, double after = 0.0, bool free_memory = true);
 
   // Setup code for the constructors
   // Return true on success, false on failure
@@ -399,8 +487,8 @@ private:
 
 template <class ReplyT>
 Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
-                                      const std::function<void(Command<ReplyT> &)> &callback,
-                                      double repeat, double after, bool free_memory) {
+				      const std::function<void(Command<ReplyT> &)> &callback,
+				      double repeat, double after, bool free_memory) {
   {
     std::unique_lock<std::mutex> ul(running_lock_);
     if (!running_) {
@@ -408,8 +496,8 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
     }
   }
 
-  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd, 
-                                callback, repeat, after, free_memory, logger_);
+  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd,
+				callback, repeat, after, free_memory, logger_);
 
   std::lock_guard<std::mutex> lg(queue_guard_);
   std::lock_guard<std::mutex> lg2(command_map_guard_);
@@ -425,24 +513,26 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
 
 template <class ReplyT>
 void Redox::command(const std::vector<std::string> &cmd,
-                    const std::function<void(Command<ReplyT> &)> &callback) {
+		    const std::function<void(Command<ReplyT> &)> &callback) {
   createCommand(cmd, callback);
 }
 
 template <class ReplyT>
 Command<ReplyT> &Redox::commandLoop(const std::vector<std::string> &cmd,
-                                    const std::function<void(Command<ReplyT> &)> &callback,
-                                    double repeat, double after) {
+				    const std::function<void(Command<ReplyT> &)> &callback,
+				    double repeat, double after) {
   return createCommand(cmd, callback, repeat, after, false);
 }
 
 template <class ReplyT>
 void Redox::commandDelayed(const std::vector<std::string> &cmd,
-                           const std::function<void(Command<ReplyT> &)> &callback, double after) {
+			   const std::function<void(Command<ReplyT> &)> &callback, double after) {
   createCommand(cmd, callback, 0, after, true);
 }
 
-template <class ReplyT> Command<ReplyT> &Redox::commandSync(const std::vector<std::string> &cmd) {
+template <class ReplyT> Command<ReplyT>&
+Redox::commandSync(const std::vector<std::string> &cmd)
+{
   auto &c = createCommand<ReplyT>(cmd, nullptr, 0, 0, false);
   c.wait();
   return c;

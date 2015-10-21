@@ -638,8 +638,150 @@ bool Redox::set(const string &key, const string &value) { return commandSync({"S
 
 bool Redox::del(const string &key) { return commandSync({"DEL", key}); }
 
+bool Redox::exists(const string &key)
+{
+  Command<int>& c = commandSync<int>({"EXISTS" , key});
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
 void Redox::publish(const string &topic, const string &msg) {
   command<redisReply *>({"PUBLISH", topic, msg});
+}
+
+
+//------------------------------------------------------------------------------
+// Redis SET add command wrapper - synchronous
+//------------------------------------------------------------------------------
+bool Redox::sadd(const std::string &key, const std::string &member)
+{
+  Command<int> &c = commandSync<int>({"SADD", key, member});
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error adding  member " + member + " to set "
+			+ key + ": Status code " + to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Redis SET add command wrapper for multiple members - synchronous
+//------------------------------------------------------------------------------
+long long int Redox::sadd(const std::string &key,
+			  std::vector<std::string> vect_members)
+{
+  (void) vect_members.insert(vect_members.begin(), key);
+  (void) vect_members.insert(vect_members.begin(), "SADD");
+  Command<long long int> &c = commandSync<long long int>(vect_members);
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error adding members to set " + key +
+			": Status code " + to_string(c.status()));
+  }
+
+  long long int reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis SET remove command wrapper - synchronous
+//------------------------------------------------------------------------------
+bool Redox::srem(const std::string &key, const std::string &member)
+{
+  Command<int> &c = commandSync<int>({"SREM", key, member});
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error removing member " + member + " from set "
+			+ key + ": Status code " + to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Redis SET remove command wrapper for multiple members - synchronous
+//------------------------------------------------------------------------------
+long long int Redox::srem(const std::string &key,
+			  std::vector<std::string> vect_members)
+{
+  (void) vect_members.insert(vect_members.begin(), key);
+  (void) vect_members.insert(vect_members.begin(), "SREM");
+  Command<long long int> &c = commandSync<long long int>(vect_members);
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error removing members from set " + key +
+			": Status code " + to_string(c.status()));
+  }
+
+  long long int reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis SET size command wrapper - synchronous
+//------------------------------------------------------------------------------
+long long int Redox::scard(const std::string &key)
+{
+  Command<long long int> &c = commandSync<long long int>({"SCARD", key});
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error getting number of members for set "
+			+ key + ": Status code " + to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis SET ismember command wrapper - synchronous
+//------------------------------------------------------------------------------
+bool Redox::sismember(const std::string &key, const std::string& member)
+{
+  Command<int> &c = commandSync<int>({"SISMEMBER", key, member});
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error checking member " + member + " in set "
+			+ key + ": Status code " + to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Redis SET smembers command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::set<std::string> Redox::smembers(const std::string &key)
+{
+  Command< std::set<std::string> > &c =
+    commandSync< std::set<std::string> >({"SMEMBERS", key});
+
+  if (!c.ok())
+  {
+    throw runtime_error("FATAL] Error getting members for set " + key +
+			": Status code " + to_string(c.status()));
+  }
+
+  std::set<std::string> reply = c.reply();
+  c.free();
+  return reply;
 }
 
 } // End namespace redis
