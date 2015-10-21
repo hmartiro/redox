@@ -19,6 +19,7 @@
 */
 
 #include <iostream>
+#include <set>
 
 #include <gtest/gtest.h>
 
@@ -29,6 +30,10 @@ namespace {
 using namespace std;
 using redox::Redox;
 using redox::Command;
+
+static const std::string TEST_REDIS_HOST="localhost";
+static const int TEST_REDIS_PORT = 6380;
+
 
 // ------------------------------------------
 // The fixture for testing class Redox.
@@ -43,7 +48,7 @@ protected:
   void connect() {
 
     // Connect to the server
-    rdx.connect("localhost", 6379);
+    rdx.connect(TEST_REDIS_HOST, TEST_REDIS_PORT);
 
     // Clear all keys used by the tests here
     rdx.command({"DEL", "redox_test:a"});
@@ -145,15 +150,29 @@ protected:
 // Core unit tests - asynchronous
 // -------------------------------------------
 
-TEST_F(RedoxTest, TestConnection) { EXPECT_TRUE(rdx.connect("localhost", 6379)); }
+TEST_F(RedoxTest, TestConnection) {
+  EXPECT_TRUE(rdx.connect(TEST_REDIS_HOST, TEST_REDIS_PORT)); }
 
-TEST_F(RedoxTest, TestConnectionFailure) { EXPECT_FALSE(rdx.connect("localhost", 6380)); }
+TEST_F(RedoxTest, TestConnectionFailure) {
+  EXPECT_FALSE(rdx.connect(TEST_REDIS_HOST, TEST_REDIS_PORT + 1000)); }
 
 TEST_F(RedoxTest, GetSet) {
   connect();
   rdx.command<string>({"SET", "redox_test:a", "apple"}, print_and_check<string>("OK"));
   rdx.command<string>({"GET", "redox_test:a"}, print_and_check<string>("apple"));
   wait_for_replies();
+
+}
+
+TEST_F(RedoxTest, Exists)
+{
+  std::string key = "redox_test:x";
+  connect();
+  ASSERT_FALSE(rdx.exists(key));
+  ASSERT_TRUE(rdx.set(key, "1"));
+  ASSERT_TRUE(rdx.exists(key));
+  ASSERT_TRUE(rdx.del(key));
+  ASSERT_FALSE(rdx.exists(key));
 }
 
 TEST_F(RedoxTest, Delete) {
@@ -298,6 +317,35 @@ TEST_F(RedoxTest, MultithreadedCRUD) {
   EXPECT_EQ(count, create_count);
   EXPECT_EQ(count, delete_count);
 }
+
+
+// -------------------------------------------
+// Test SET interface - synchronous
+// -------------------------------------------
+TEST_F(RedoxTest, SetSync) {
+  connect();
+  std::string set_key = "redis_test:set";
+  std::vector<std::string> members = {"200", "300", "400"};
+  ASSERT_EQ(members.size(), rdx.sadd(set_key, members));
+  ASSERT_TRUE(rdx.sadd(set_key, "100"));
+  ASSERT_FALSE(rdx.sadd(set_key, "400"));
+  (void) members.push_back("100");
+  ASSERT_TRUE(rdx.sismember(set_key, "300"));
+  ASSERT_FALSE(rdx.sismember(set_key, "1500"));
+  ASSERT_EQ(4, rdx.scard(set_key));
+  auto ret_members = rdx.smembers(set_key);
+
+  for (const auto& elem: members)
+    ASSERT_TRUE(ret_members.find(elem) != ret_members.end());
+
+  ASSERT_TRUE(rdx.srem(set_key, "100"));
+  ASSERT_EQ(3, rdx.srem(set_key, members));
+  ASSERT_FALSE(rdx.srem(set_key, "100"));
+  ASSERT_EQ(0, rdx.smembers("fake_key").size());
+  ASSERT_EQ(0, rdx.scard(set_key));
+  rdx.disconnect();
+}
+
 
 // -------------------------------------------
 // End tests
