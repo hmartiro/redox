@@ -169,9 +169,10 @@ if(NOT CMAKE_INSTALL_PREFIX)
 endif(NOT CMAKE_INSTALL_PREFIX)
 
 # Check if it is a 64 bit system
-if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
-    set(LIB_SUFFIX "64")
-endif()
+# 
+#if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
+#    set(LIB_SUFFIX "64")
+#endif()
 
 # Install the dynamic library to /usr/lib[64]
 install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
@@ -188,7 +189,7 @@ install(FILES ${INC_REDOX_WRAPPER} DESTINATION include)
 # ---------------------------------------------------------
 
 # Determine build architecture
-execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
+execute_process(COMMAND dpkg-architecture -q "DEB_BUILD_ARCH" COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
 message("Building for ${ARCHITECTURE}")
 
 # build CPack driven installer packages
