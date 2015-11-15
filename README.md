@@ -49,23 +49,25 @@ This section introduces the main features of redox. Look in `examples/` for more
 #### Hello world
 Here is the simplest possible redox program:
 
-    #include <iostream>
-    #include <redox.hpp>
+```c++
+#include <iostream>
+#include <redox.hpp>
 
-    using namespace std;
-    using namespace redox;
+using namespace std;
+using namespace redox;
 
-    int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
 
-      Redox rdx;
-      if(!rdx.connect("localhost", 6379)) return 1;
+  Redox rdx;
+  if(!rdx.connect("localhost", 6379)) return 1;
 
-      rdx.set("hello", "world!");
-      cout << "Hello, " << rdx.get("hello") << endl;
+  rdx.set("hello", "world!");
+  cout << "Hello, " << rdx.get("hello") << endl;
 
-      rdx.disconnect();
-      return 0;
-    }
+  rdx.disconnect();
+  return 0;
+}
+```
 
 Compile and run:
 
@@ -83,13 +85,15 @@ any Redis command and providing a reply callback. The `command` method accepts a
 Redis command in the form of an STL vector of strings, and a callback to be invoked
 when a reply is received or if there is an error.
 
-    rdx.command<string>({"GET", "hello"}, [](Command<string>& c) {
-      if(c.ok()) {
-        cout << "Hello, async " << c.reply() << endl;
-      } else {
-        cerr << "Command has error code " << c.status() << endl;
-      }
-    });
+```c++
+rdx.command<string>({"GET", "hello"}, [](Command<string>& c) {
+  if(c.ok()) {
+    cout << "Hello, async " << c.reply() << endl;
+  } else {
+    cerr << "Command has error code " << c.status() << endl;
+  }
+});
+```
 
 This statement tells redox to run the command `GET hello`. The `<string>` template
 parameter means that we want the reply to be put into a string and that we expect
@@ -109,43 +113,47 @@ the callback returns.
 
 Here is a simple example of running `GET hello` asynchronously ten times:
 
-    Redox rdx;
+```c++
+Redox rdx;
 
-    // Block until connected, localhost by default
-    if(!rdx.connect()) return 1;
+// Block until connected, localhost by default
+if(!rdx.connect()) return 1;
 
-    auto got_reply = [](Command<string>& c) {
-      if(!c.ok()) return;
-      cout << c.cmd() << ": " << c.reply() << endl;
-    };
+auto got_reply = [](Command<string>& c) {
+  if(!c.ok()) return;
+  cout << c.cmd() << ": " << c.reply() << endl;
+};
 
-    for(int i = 0; i < 10; i++) rdx.command<string>({"GET", "hello"}, got_reply);
+for(int i = 0; i < 10; i++) rdx.command<string>({"GET", "hello"}, got_reply);
 
-    // Do useful work
-    this_thread::sleep_for(chrono::milliseconds(10));
+// Do useful work
+this_thread::sleep_for(chrono::milliseconds(10));
 
-    rdx.disconnect(); // Block until disconnected
+rdx.disconnect(); // Block until disconnected
+```
 
 The `.command()` method returns immediately, so this program doesn't wait for a reply
 from the server - it just pauses for ten milliseconds and then shuts down. If we want to
 shut down after we get all replies, we could do something like this:
 
-    Redox rdx;
-    if(!rdx.connect()) return 1;
+```c++
+Redox rdx;
+if(!rdx.connect()) return 1;
 
-    int total = 10; // Number of commands to run
-    atomic_int count(0); // Number of replies expected
-    auto got_reply = [&](Command<string>& c) {
-      count++;
-      if(c.ok()) cout << c.cmd() << " #" << count << ": " << c.reply() << endl;
-      if(count == total) rdx.stop(); // Signal to shut down
-    };
+int total = 10; // Number of commands to run
+atomic_int count(0); // Number of replies expected
+auto got_reply = [&](Command<string>& c) {
+  count++;
+  if(c.ok()) cout << c.cmd() << " #" << count << ": " << c.reply() << endl;
+  if(count == total) rdx.stop(); // Signal to shut down
+};
 
-    for(int i = 0; i < total; i++) rdx.command<string>({"GET", "hello"}, got_reply);
+for(int i = 0; i < total; i++) rdx.command<string>({"GET", "hello"}, got_reply);
 
-    // Do useful work
+// Do useful work
 
-    rdx.wait(); // Block until shut down complete
+rdx.wait(); // Block until shut down complete
+```
 
 This example tracks of how how many replies are received and signals the Redox
 instance to stop once they all process. We use an `std::atomic_int` to be safe
@@ -162,9 +170,11 @@ between synchronous commands in different threads. The `commandSync` method prov
 a similar API to `command`, but instead of a callback returns a Command object when
 a reply is received.
 
-    Command<string>& c = rdx.commandSync<string>({"GET", "hello"});
-    if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
-    c.free();
+```c++
+Command<string>& c = rdx.commandSync<string>({"GET", "hello"});
+if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
+c.free();
+```
 
 When using synchronous commands, the user is responsible for freeing the memory of
 the Command object by calling `c.free()`. The `c.cmd()` method just returns a string
@@ -178,22 +188,26 @@ commands in a loop, because it only creates a single Command object.
 to repeat the command. It then runs the command on the given interval until the user
 calls `c.free()`.
 
-    Command<string>& cmd = rdx.commandLoop<string>({"GET", "hello"}, [](Command<string>& c) {
-      if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
-    }, 0.1);
+```c++
+Command<string>& cmd = rdx.commandLoop<string>({"GET", "hello"}, [](Command<string>& c) {
+  if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
+}, 0.1);
 
-    this_thread::sleep_for(chrono::seconds(1));
-    cmd.free();
-    rdx.disconnect();
+this_thread::sleep_for(chrono::seconds(1));
+cmd.free();
+rdx.disconnect();
+```
 
 Finally, `commandDelayed` runs a command after a specified delay (in seconds). It does
 not return a command object, because the memory is automatically freed after the callback
 is invoked.
 
-    rdx.commandDelayed<string>({"GET", "hello"}, [](Command<string>& c) {
-      if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
-    }, 1);
-    this_thread::sleep_for(chrono::seconds(2));
+```c++
+rdx.commandDelayed<string>({"GET", "hello"}, [](Command<string>& c) {
+  if(c.ok()) cout << c.cmd() << ": " << c.reply() << endl;
+}, 1);
+this_thread::sleep_for(chrono::seconds(2));
+```
 
 #### Convenience methods
 The four methods `command`, `commandSync`, `commandLoop`, and `commandDelayed` form
@@ -210,19 +224,21 @@ Redox provides an API for the pub/sub functionality of Redis. Publishing is done
 any other command using a Redox instance. There is a separate Subscriber class that
 receives messages and provides subscribe/unsubscribe and psubscribe/punsubscribe methods.
 
-    Redox rdx; Subscriber sub;
-    if(!rdx.connect() || !sub.connect()) return 1;
+```c++
+Redox rdx; Subscriber sub;
+if(!rdx.connect() || !sub.connect()) return 1;
 
-    sub.subscribe("hello", [](const string& topic, const string& msg) {
-      cout << topic << ": " << msg << endl;
-    });
+sub.subscribe("hello", [](const string& topic, const string& msg) {
+  cout << topic << ": " << msg << endl;
+});
 
-    for(int i = 0; i < 10; i++) {
-      rdx.publish("hello", "this is a pubsub message");
-      this_thread::sleep_for(chrono::milliseconds(500));
-    }
+for(int i = 0; i < 10; i++) {
+  rdx.publish("hello", "this is a pubsub message");
+  this_thread::sleep_for(chrono::milliseconds(500));
+}
 
-    sub.disconnect(); rdx.disconnect();
+sub.disconnect(); rdx.disconnect();
+```
 
 #### strToVec and vecToStr
 Redox provides helper methods to convert between a string command and
