@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
   this_thread::sleep_for( chrono::milliseconds(1000) );
 
   rdx.publish("test", binary_data);
-  cout << "published!" << endl;
+
   this_thread::sleep_for( chrono::milliseconds(1000) );
 
   rdx.disconnect();
