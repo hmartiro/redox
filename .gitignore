@@ -36,3 +36,6 @@ build/
 # Todo file
 TODO.md
 
+# Eclipse
+.cproject
+.project

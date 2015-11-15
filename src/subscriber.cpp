@@ -152,15 +152,17 @@ void Subscriber::subscribeBase(const string cmd_name, const string topic,
         // Message for subscribe
         else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 3)) {
           char *msg = reply->element[2]->str;
+          int len = reply->element[2]->len;
           if (msg && msg_callback)
-            msg_callback(topic, reply->element[2]->str);
+            msg_callback(topic, string(msg, len));
         }
 
         // Message for psubscribe
         else if ((reply->type == REDIS_REPLY_ARRAY) && (reply->elements == 4)) {
-          char *msg = reply->element[2]->str;
+          char *msg = reply->element[3]->str;
+          int len = reply->element[3]->len;
           if (msg && msg_callback)
-            msg_callback(reply->element[2]->str, reply->element[3]->str);
+            msg_callback(reply->element[2]->str, string(msg, len));
         }
 
         else
