@@ -142,6 +142,9 @@ if (examples)
   add_executable(binary_data examples/binary_data.cpp)
   target_link_libraries(binary_data redox)
 
+  add_executable(binary_data_publish examples/binary_data_publish.cpp)
+  target_link_libraries(binary_data_publish redox)
+  
   add_executable(pub_sub examples/pub_sub.cpp)
   target_link_libraries(pub_sub redox)
 
