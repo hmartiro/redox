@@ -189,7 +189,10 @@ install(FILES ${INC_REDOX_WRAPPER} DESTINATION include)
 # ---------------------------------------------------------
 
 # Determine build architecture
-execute_process(COMMAND dpkg-architecture -q "DEB_BUILD_ARCH" COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
+execute_process(COMMAND dpkg-architecture -q "DEB_BUILD_ARCH" COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE ERROR_QUIET)
+if(NOT ARCHITECTURE)
+    execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
+endif()
 message("Building for ${ARCHITECTURE}")
 
 # build CPack driven installer packages
