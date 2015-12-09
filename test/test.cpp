@@ -18,6 +18,7 @@
 * limitations under the License.
 */
 
+#include <algorithm>
 #include <iostream>
 #include <set>
 
@@ -73,7 +74,7 @@ protected:
     return [this, value](Command<ReplyT> &c) {
       EXPECT_TRUE(c.ok());
       if (c.ok())
-        EXPECT_EQ(value, c.reply());
+	EXPECT_EQ(value, c.reply());
       cmd_count--;
       cmd_waiter.notify_all();
     };
@@ -85,7 +86,7 @@ protected:
   template <class ReplyT> Callback<ReplyT> print(Callback<ReplyT> callback) {
     return [callback](Command<ReplyT> &c) {
       if (c.ok())
-        cout << "[ASYNC] " << c.cmd() << ": " << c.reply() << endl;
+	cout << "[ASYNC] " << c.cmd() << ": " << c.reply() << endl;
       callback(c);
     };
   }
@@ -279,10 +280,10 @@ TEST_F(RedoxTest, MultithreadedCRUD) {
     }
     for (int i = 0; i < count; ++i) {
       try {
-        rdx.commandSync<string>({"SET", "redox_test:mt", "create"});
+	rdx.commandSync<string>({"SET", "redox_test:mt", "create"});
       }
       catch (...) {
-        createExcCount++;
+	createExcCount++;
       }
       create_count++;
     }
@@ -295,10 +296,10 @@ TEST_F(RedoxTest, MultithreadedCRUD) {
     }
     for (int i = 0; i < count; ++i) {
       try {
-        rdx.commandSync<int>({"DEL", "redox_test:mt"});
+	rdx.commandSync<int>({"DEL", "redox_test:mt"});
       }
       catch (...) {
-        deleteExcCount++;
+	deleteExcCount++;
       }
       delete_count++;
     }
@@ -316,15 +317,21 @@ TEST_F(RedoxTest, MultithreadedCRUD) {
   delete_thread.join();
   EXPECT_EQ(count, create_count);
   EXPECT_EQ(count, delete_count);
-}
 
+  try {
+    rdx.commandSync<int>({"DEL", "redox_test:mt"});
+  }
+  catch (...) {
+    // make sure we clean the instance
+  }
+}
 
 // -------------------------------------------
 // Test SET interface - synchronous
 // -------------------------------------------
 TEST_F(RedoxTest, SetSync) {
   connect();
-  std::string set_key = "redis_test:set";
+  std::string set_key = "redox_test:set";
   std::vector<std::string> members = {"200", "300", "400"};
   ASSERT_EQ(members.size(), rdx.sadd(set_key, members));
   ASSERT_TRUE(rdx.sadd(set_key, "100"));
@@ -343,9 +350,135 @@ TEST_F(RedoxTest, SetSync) {
   ASSERT_FALSE(rdx.srem(set_key, "100"));
   ASSERT_EQ(0, rdx.smembers("fake_key").size());
   ASSERT_EQ(0, rdx.scard(set_key));
+
+  // Test SSCAN functionality
+  members.clear();
+
+  for (int i = 0; i < 3000; ++i)
+  {
+    members.push_back(std::to_string(i));
+    ASSERT_TRUE(rdx.sadd(set_key, i));
+  }
+
+  long long cursor = 0;
+  long long count = 1000;
+  std::pair< long long, std::vector<std::string> > reply;
+  reply = rdx.sscan(set_key, cursor, count);
+
+  for (auto&& elem: reply.second)
+  {
+    ASSERT_TRUE(std::find(members.begin(), members.end(), elem) !=
+		members.end());
+  }
+
+  while (cursor)
+  {
+    reply = rdx.sscan(set_key, cursor, count);
+
+    for (auto&& elem: reply.second)
+    {
+      ASSERT_TRUE(std::find(members.begin(), members.end(), elem) !=
+		  members.end());
+    }
+  }
+
+  print_and_check_sync(rdx.commandSync<int>({"DEL", set_key}), 1);
   rdx.disconnect();
 }
 
+// -------------------------------------------
+// Test HASH interface - synchronous
+// -------------------------------------------
+TEST_F(RedoxTest, HashSync) {
+  connect();
+  std::string hash_key = "redox_test:hash";
+  std::vector<std::string> fields {"val1", "val2", "val3"};
+  std::vector<int> ivalues {10, 20, 30};
+  std::vector<float> fvalues {100.0, 200.0, 300.0};
+  std::vector<std::string> svalues {"1000", "2000", "3000"};
+  ASSERT_EQ(0, rdx.hlen(hash_key));
+  ASSERT_TRUE(rdx.hset(hash_key, fields[0], fvalues[0]));
+  ASSERT_FLOAT_EQ(fvalues[0], std::stof(rdx.hget(hash_key, fields[0])));
+  ASSERT_FLOAT_EQ(100.0005, rdx.hincrbyfloat(hash_key, fields[0], 0.0005));
+  ASSERT_TRUE(rdx.hexists(hash_key, fields[0]));
+  ASSERT_TRUE(rdx.hdel(hash_key, fields[0]));
+
+  ASSERT_FALSE(rdx.hexists(hash_key, fields[1]));
+  ASSERT_TRUE(rdx.hsetnx(hash_key, fields[1], svalues[1]));
+  ASSERT_FALSE(rdx.hsetnx(hash_key, fields[1], svalues[1]));
+  ASSERT_EQ(svalues[1], rdx.hget(hash_key, fields[1]));
+  ASSERT_TRUE(rdx.hdel(hash_key, fields[1]));
+
+  ASSERT_TRUE(rdx.hset(hash_key, fields[2], ivalues[2]));
+  ASSERT_TRUE(rdx.hset(hash_key, fields[1], ivalues[1]));
+  ASSERT_EQ(35, rdx.hincrby(hash_key, fields[2], 5));
+  ASSERT_TRUE(rdx.hdel(hash_key, fields[2]));
+  ASSERT_TRUE(rdx.hsetnx(hash_key, fields[2], ivalues[2]));
+  ASSERT_TRUE(rdx.hsetnx(hash_key, fields[0], ivalues[0]));
+  ASSERT_EQ(3, rdx.hlen(hash_key));
+
+  // Test the hkeys command
+  std::vector<std::string> resp = rdx.hkeys(hash_key);
+
+  for (auto&& elem: resp)
+  {
+    ASSERT_TRUE(std::find(fields.begin(), fields.end(), elem) != fields.end());
+  }
+
+  // Test the hvals command
+  resp = rdx.hvals(hash_key);
+
+  for (auto&& elem: resp)
+  {
+    ASSERT_TRUE(std::find(ivalues.begin(), ivalues.end(), std::stoi(elem)) != ivalues.end());
+  }
+
+  // Test the hgetall command
+  resp = rdx.hgetall(hash_key);
+
+  for (auto it = resp.begin(); it != resp.end(); ++it)
+  {
+    ASSERT_TRUE(std::find(fields.begin(), fields.end(), *it) != fields.end());
+    ++it;
+    ASSERT_TRUE(std::find(ivalues.begin(), ivalues.end(), std::stoi(*it)) != ivalues.end());
+  }
+
+  ASSERT_THROW(rdx.hget(hash_key, "dummy_field"), std::runtime_error);
+  ASSERT_THROW(rdx.hget("unknown_key", "dummy_field"), std::runtime_error);
+  print_and_check_sync(rdx.commandSync<int>({"DEL", hash_key}), 1);
+
+  // Test hscan command
+  std::unordered_map<int, int> map;
+
+  for (int i = 0; i < 3000; ++i)
+  {
+    map.emplace(i, i);
+    ASSERT_TRUE(rdx.hset(hash_key, std::to_string(i), i));
+  }
+
+  long long cursor = 0;
+  long long count = 1000;
+  std::pair< long long , std::unordered_map<std::string, std::string> > reply;
+  reply = rdx.hscan(hash_key, cursor, count);
+
+  for (auto&& elem: reply.second)
+  {
+    ASSERT_TRUE(map[std::stoi(elem.first)] == std::stoi(elem.second));
+  }
+
+  while (cursor)
+  {
+    reply = rdx.hscan(hash_key, cursor, count);
+
+    for (auto&& elem: reply.second)
+    {
+      ASSERT_TRUE(map[std::stoi(elem.first)] == std::stoi(elem.second));
+    }
+  }
+
+  print_and_check_sync(rdx.commandSync<int>({"DEL", hash_key}), 1);
+  rdx.disconnect();
+}
 
 // -------------------------------------------
 // End tests
