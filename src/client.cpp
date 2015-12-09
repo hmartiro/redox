@@ -52,7 +52,7 @@ Redox::Redox(ostream &log_stream, log::Level log_level)
     : logger_(log_stream, log_level), evloop_(nullptr) {}
 
 bool Redox::connect(const string &host, const int port,
-                    function<void(int)> connection_callback) {
+		    function<void(int)> connection_callback) {
 
   host_ = host;
   port_ = port;
@@ -341,7 +341,7 @@ void Redox::runEventLoop() {
   long deleted = commands_deleted_;
   if (created != deleted) {
     logger_.error() << "All commands were not freed! " << deleted << "/"
-                    << created;
+		    << created;
   }
 
   // Let go for block_until_stopped method
@@ -386,15 +386,15 @@ template <class ReplyT> bool Redox::submitToServer(Command<ReplyT> *c) {
   // Construct a char** from the vector
   vector<const char *> argv;
   transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argv),
-            [](const string &s) { return s.c_str(); });
+	    [](const string &s) { return s.c_str(); });
 
   // Construct a size_t* of string lengths from the vector
   vector<size_t> argvlen;
   transform(c->cmd_.begin(), c->cmd_.end(), back_inserter(argvlen),
-            [](const string &s) { return s.size(); });
+	    [](const string &s) { return s.size(); });
 
   if (redisAsyncCommandArgv(rdx->ctx_, commandCallback<ReplyT>, (void *)c->id_, argv.size(),
-                            &argv[0], &argvlen[0]) != REDIS_OK) {
+			    &argv[0], &argvlen[0]) != REDIS_OK) {
     rdx->logger_.error() << "Could not send \"" << c->cmd() << "\": " << rdx->ctx_->errstr;
     c->reply_status_ = Command<ReplyT>::SEND_ERROR;
     c->invoke();
@@ -413,7 +413,7 @@ void Redox::submitCommandCallback(struct ev_loop *loop, ev_timer *timer, int rev
   Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
   if (c == nullptr) {
     rdx->logger_.error() << "Couldn't find Command " << id
-                         << " in command_map (submitCommandCallback).";
+			 << " in command_map (submitCommandCallback).";
     return;
   }
 
@@ -512,10 +512,10 @@ template <class ReplyT> bool Redox::freeQueuedCommand(long id) {
 
 long Redox::freeAllCommands() {
   return freeAllCommandsOfType<redisReply *>() + freeAllCommandsOfType<string>() +
-         freeAllCommandsOfType<char *>() + freeAllCommandsOfType<int>() +
-         freeAllCommandsOfType<long long int>() + freeAllCommandsOfType<nullptr_t>() +
-         freeAllCommandsOfType<vector<string>>() + freeAllCommandsOfType<std::set<string>>() +
-         freeAllCommandsOfType<unordered_set<string>>();
+	 freeAllCommandsOfType<char *>() + freeAllCommandsOfType<int>() +
+	 freeAllCommandsOfType<long long int>() + freeAllCommandsOfType<nullptr_t>() +
+	 freeAllCommandsOfType<vector<string>>() + freeAllCommandsOfType<std::set<string>>() +
+	 freeAllCommandsOfType<unordered_set<string>>();
 }
 
 template <class ReplyT> long Redox::freeAllCommandsOfType() {
@@ -627,7 +627,7 @@ string Redox::get(const string &key) {
   Command<char *> &c = commandSync<char *>({"GET", key});
   if (!c.ok()) {
     throw runtime_error("[FATAL] Error getting key " + key + ": Status code " +
-                        to_string(c.status()));
+			to_string(c.status()));
   }
   string reply = c.reply();
   c.free();
@@ -650,24 +650,9 @@ void Redox::publish(const string &topic, const string &msg) {
   command<redisReply *>({"PUBLISH", topic, msg});
 }
 
-
 //------------------------------------------------------------------------------
-// Redis SET add command wrapper - synchronous
+// *** Redis SET command wrappers ***
 //------------------------------------------------------------------------------
-bool Redox::sadd(const std::string &key, const std::string &member)
-{
-  Command<int> &c = commandSync<int>({"SADD", key, member});
-
-  if (!c.ok())
-  {
-    throw runtime_error("FATAL] Error adding  member " + member + " to set "
-			+ key + ": Status code " + to_string(c.status()));
-  }
-
-  int reply = c.reply();
-  c.free();
-  return (reply == 1);
-}
 
 //------------------------------------------------------------------------------
 // Redis SET add command wrapper for multiple members - synchronous
@@ -681,31 +666,13 @@ long long int Redox::sadd(const std::string &key,
 
   if (!c.ok())
   {
-    throw runtime_error("FATAL] Error adding members to set " + key +
+    throw runtime_error("[FATAL] Error adding members to set " + key +
 			": Status code " + to_string(c.status()));
   }
 
   long long int reply = c.reply();
   c.free();
   return reply;
-}
-
-//------------------------------------------------------------------------------
-// Redis SET remove command wrapper - synchronous
-//------------------------------------------------------------------------------
-bool Redox::srem(const std::string &key, const std::string &member)
-{
-  Command<int> &c = commandSync<int>({"SREM", key, member});
-
-  if (!c.ok())
-  {
-    throw runtime_error("FATAL] Error removing member " + member + " from set "
-			+ key + ": Status code " + to_string(c.status()));
-  }
-
-  int reply = c.reply();
-  c.free();
-  return (reply == 1);
 }
 
 //------------------------------------------------------------------------------
@@ -720,7 +687,7 @@ long long int Redox::srem(const std::string &key,
 
   if (!c.ok())
   {
-    throw runtime_error("FATAL] Error removing members from set " + key +
+    throw runtime_error("[FATAL] Error removing members from set " + key +
 			": Status code " + to_string(c.status()));
   }
 
@@ -738,31 +705,13 @@ long long int Redox::scard(const std::string &key)
 
   if (!c.ok())
   {
-    throw runtime_error("FATAL] Error getting number of members for set "
+    throw runtime_error("[FATAL] Error getting number of members for set "
 			+ key + ": Status code " + to_string(c.status()));
   }
 
   int reply = c.reply();
   c.free();
   return reply;
-}
-
-//------------------------------------------------------------------------------
-// Redis SET ismember command wrapper - synchronous
-//------------------------------------------------------------------------------
-bool Redox::sismember(const std::string &key, const std::string& member)
-{
-  Command<int> &c = commandSync<int>({"SISMEMBER", key, member});
-
-  if (!c.ok())
-  {
-    throw runtime_error("FATAL] Error checking member " + member + " in set "
-			+ key + ": Status code " + to_string(c.status()));
-  }
-
-  int reply = c.reply();
-  c.free();
-  return (reply == 1);
 }
 
 //------------------------------------------------------------------------------
@@ -775,13 +724,227 @@ std::set<std::string> Redox::smembers(const std::string &key)
 
   if (!c.ok())
   {
-    throw runtime_error("FATAL] Error getting members for set " + key +
+    throw runtime_error("[FATAL] Error getting members for set " + key +
 			": Status code " + to_string(c.status()));
   }
 
   std::set<std::string> reply = c.reply();
   c.free();
   return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis SET SCAN command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::pair< long long, std::vector<std::string> >
+Redox::sscan(const std::string &key, long long cursor, long long count)
+{
+  Command<redisReply*> &c =  commandSync<redisReply*>(
+    {"SSCAN", key, std::to_string(cursor), "COUNT", std::to_string(count)});
+
+  if (!c.ok())
+  {
+    throw runtime_error("[FATAL] Error executing SSCAN for set " + key +
+			": Status code " + to_string(c.status()));
+  }
+
+  // Parse the Redis reply
+  redisReply* reply = c.reply();
+  long long new_cursor = std::stoll({reply->element[0]->str,
+	static_cast<unsigned int>(reply->element[0]->len)});
+
+  // First element is the new cursor
+  std::pair<long long, std::vector<std::string> > retc_pair;
+  retc_pair.first = new_cursor;
+  reply = reply->element[1]; // move to the array part of the response
+
+  for (unsigned long i = 0; i < reply->elements; ++i)
+  {
+    retc_pair.second.emplace_back(reply->element[i]->str,
+				   static_cast<unsigned int>(reply->element[i]->len));
+  }
+
+  c.free();
+  return retc_pair;
+}
+
+//------------------------------------------------------------------------------
+// *** Redis HASH command wrappers ***
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+// Redis HASH del command wrapper - synchronous
+//------------------------------------------------------------------------------
+bool
+Redox::hdel(const std::string& key, const std::string& field)
+{
+  Command<int>& c = commandSync<int>({"HDEL", key, field});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hdel key: " + key + " field: " + field +
+			     ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH get command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::string
+Redox::hget(const std::string& key, const std::string& field)
+{
+  Command<std::string>& c = commandSync<std::string>({"HGET", key, field});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hget key: " + key + " field: " + field +
+			     ": Status code " + std::to_string(c.status()));
+  }
+
+  std::string reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH get all command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::vector<std::string>
+Redox::hgetall(const std::string& key)
+{
+  Command< std::vector<std::string> >& c =
+    commandSync< std::vector<std::string> >({"HGETALL", key});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hgetall key: " + key + ": Status code "
+			     + std::to_string(c.status()));
+  }
+
+  std::vector<std::string> reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH exists command wrapper - synchronous
+//------------------------------------------------------------------------------
+bool
+Redox::hexists(const std::string& key, const std::string& field)
+{
+  Command<int>& c = commandSync<int>({"HEXISTS", key, field});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hexists key: " + key + " field: "
+			     + field + ": Status code " +
+			     std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH length command wrapper - synchronous
+//------------------------------------------------------------------------------
+long long int
+Redox::hlen(const std::string& key)
+{
+  Command<long long int>& c = commandSync<long long int>({"HLEN", key});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hlen key: " + key + ": Status code "
+			     + std::to_string(c.status()));
+  }
+
+  long long int reply = c.reply();
+  c.free();
+  return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH keys command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::vector<std::string>
+Redox::hkeys(const std::string& key)
+{
+  Command< std::vector<std::string> >& c
+    = commandSync< std::vector<std::string> >({"HKEYS", key});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hkeys key: " + key + ": Status code "
+			     + std::to_string(c.status()));
+  }
+
+  std::vector<std::string> vect_resp = c.reply();
+  c.free();
+  return vect_resp;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH keys command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::vector<std::string>
+Redox::hvals(const std::string& key)
+{
+  Command< std::vector<std::string> >& c
+    = commandSync< std::vector<std::string> >({"HVALS", key});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error hvals key: " + key + ": Status code "
+			     + std::to_string(c.status()));
+  }
+
+  std::vector<std::string> vect_resp = c.reply();
+  c.free();
+  return vect_resp;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH SCAN command wrapper - synchronous
+//------------------------------------------------------------------------------
+std::pair< long long, std::unordered_map<std::string, std::string> >
+Redox::hscan(const std::string& key, long long cursor, long long count)
+{
+  Command<redisReply*> &c =  commandSync<redisReply*>(
+    {"HSCAN", key, std::to_string(cursor), "COUNT", std::to_string(count)});
+
+  if (!c.ok())
+  {
+    throw runtime_error("[FATAL] Error executing HSCAN for map " + key +
+			": Status code " + to_string(c.status()));
+  }
+
+  // Parse the Redis reply
+  redisReply* reply = c.reply();
+  long long new_cursor = std::stoll({reply->element[0]->str,
+	static_cast<unsigned int>(reply->element[0]->len)});
+
+  // First element is the new cursor
+  std::pair<long long, std::unordered_map<std::string, std::string> > retc_pair;
+  retc_pair.first = new_cursor;
+  reply = reply->element[1]; // move to the array part of the response
+
+  for (unsigned long i = 0; i < reply->elements; i += 2)
+  {
+    retc_pair.second.emplace(
+      std::string(reply->element[i]->str,
+		  static_cast<unsigned int>(reply->element[i]->len)),
+      std::string(reply->element[i + 1]->str,
+		  static_cast<unsigned int>(reply->element[i + 1]->len)));
+  }
+
+  c.free();
+  return retc_pair;
 }
 
 } // End namespace redis

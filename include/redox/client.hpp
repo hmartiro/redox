@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <type_traits>
 #include <iostream>
 #include <functional>
 
@@ -226,6 +227,34 @@ public:
   */
   void publish(const std::string &topic, const std::string &msg);
 
+  /**
+   * Helper function specialization to convert to std::string if necessary
+   *
+   * @param s string value
+   *
+   * @return string
+   **/
+  std::string stringify(std::string s)   // use implicit conversion to std::string
+  {
+    return std::move(s); // take advantage of move semantics
+  }
+
+  /**
+   * Helper function to convert to std::string if necessary
+   *
+   * @param s input value that can be converted to string
+   *
+   * @return string representatino of the input
+   **/
+  template <typename T>
+  typename std::enable_if < !std::is_convertible<T, std::string>::value,
+			    std::string >::type
+  stringify(T&& value)
+  {
+    using std::to_string; // take advantage of ADL (argument-dependent lookup)
+    return to_string(std::forward<T>
+		     (value)); // take advantage of perfect forwarding
+  }
 
   //----------------------------------------------------------------------------
   // Redis SET command wrappers
@@ -237,11 +266,10 @@ public:
    * @param key name of the set
    * @param member value to be added to the set
    *
-   * @return true if member removed, otherwise false
+   * @return true if member added, otherwise false
    **/
-  bool sadd(const std::string &key, const std::string &member);
-
-
+  template <typename T>
+  bool sadd(const std::string &key, const T& member);
 
   /**
    * Redis SET add command wrapper for multiple members - synchronous
@@ -263,7 +291,8 @@ public:
    *
    * @return true if member removed, otherwise false
    **/
-  bool srem(const std::string &key, const std::string &member);
+  template<typename T>
+  bool srem(const std::string &key, const T& member);
 
   /**
    * Redis SET remove command wrapper for multiple members - synchronous
@@ -293,16 +322,169 @@ public:
    *
    * @return true if member in the set, otherwise false
    **/
-  bool sismember(const std::string &key, const std::string& member);
+  template<typename T>
+  bool sismember(const std::string &key, const T& member);
 
   /**
    * Redis SET members command wrapper - synchronous
    *
    * @param key name of the set
-    *
+   *
    * @return set containing the members of the set
    **/
-  std::set<std::string> smembers(const std::string &key);
+  std::set<std::string> smembers(const std::string& key);
+
+  /**
+   * Redis SET SSCAN command wrapper - synchronous
+   *
+   * @param key name of the set
+   * @param cursor cursor for current request
+   * @param count max number of elements to return
+   *
+   * @return pair representing the cursor value and a vector of the elements
+   *         returned in the current step
+   **/
+  std::pair< long long, std::vector<std::string> >
+  sscan(const std::string& key, long long cursor, long long count = 1000);
+
+  //----------------------------------------------------------------------------
+  // Redis HASH command wrappers
+  //----------------------------------------------------------------------------
+
+  /**
+   * Redis HASH set command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param value value to set
+   *
+   * @return true if value set, otherwise false meaning the value existed and
+   *         it's updated
+   **/
+  template <typename T>
+  bool hset(const std::string& key, const std::string& field, const T& value);
+
+  /**
+   * Redis HASH set if doesn't exist command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param value value to set
+   *
+   * @return true if value set, otherwise false meaning the value existed and
+   *         no operation was performed
+   **/
+  template <typename T>
+  bool hsetnx(const std::string& key, const std::string& field, const T& value);
+
+  /**
+   * Redis HASH del command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param value value to set
+   *
+   * @return true if value set, otherwise false meaning the value existed and
+   *         it's updated
+   **/
+  bool hdel(const std::string& key, const std::string& field);
+
+  /**
+   * Redis HASH get command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   *
+   * @return return the value associated with "field" in the hash stored at "key".
+   *         If no such value then throw ans std::runtime_error exception.
+   **/
+  std::string hget(const std::string& key, const std::string& field);
+
+  /**
+   * Redis HASH get all command wrapper - synchronous
+   *
+   * @param key name of the hash
+   *
+   * @return list of fields and their values stored in the hash, or an empty
+   *         list when key does not exist
+   **/
+  std::vector<std::string> hgetall(const std::string& key);
+
+  /**
+   * Redis HASH exists command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   *
+   * @return true if hash "key" contains "field", otherwise false
+   **/
+  bool hexists(const std::string& key, const std::string& field);
+
+  /**
+   * Redis HASH length command wrapper - synchronous
+   *
+   * @param key name of the hash
+   *
+   * @return number of fields in the hash, or 0 if key does not exists
+   **/
+  long long int hlen(const std::string& key);
+
+  /**
+   * Redis HASH increment_by command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param increment value to increment by
+   *
+   * @return the value at "field" after the increment operation
+   **/
+  template <typename T>
+  long long int
+  hincrby(const std::string& key, const std::string& field, const T& increment);
+
+  /**
+   * Redis HASH increment_by_float command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param increment value to increment by
+   *
+   * @return the value at "field" after the increment operation
+   **/
+  template <typename T>
+  double
+  hincrbyfloat(const std::string& key, const std::string& field, const T& increment);
+
+  /**
+   * Redis HASH keys command wrapper - synchronous
+   *
+   * @param key name of the hash
+   *
+   * @return vector of fields in the hash
+   **/
+  std::vector<std::string> hkeys(const std::string& key);
+
+  /**
+   * Redis HASH values command wrapper - synchronous
+   *
+   * @param key name of the hash
+   *
+   * @return vector of values in the hash
+   **/
+  std::vector<std::string> hvals(const std::string& key);
+
+  /**
+   * Redis HASH SCAN command wrapper - synchronous
+   *
+   * @param key name of the map
+   * @param cursor cursor for current request
+   * @param count max number of elements to return
+   *
+   * @return pair representing the cursor value and a map of the elements
+   *         returned in the current step
+   **/
+  std::pair< long long, std::unordered_map<std::string, std::string> >
+  hscan(const std::string& key, long long cursor, long long count = 1000);
 
 
   // ------------------------------------------------
@@ -536,6 +718,134 @@ Redox::commandSync(const std::vector<std::string> &cmd)
   auto &c = createCommand<ReplyT>(cmd, nullptr, 0, 0, false);
   c.wait();
   return c;
+}
+
+//------------------------------------------------------------------------------
+// Set related templated methods implementation
+//------------------------------------------------------------------------------
+template <typename T>
+bool Redox::sadd(const std::string &key, const T& member)
+{
+  std::string smember = stringify(member);
+  Command<int> &c = commandSync<int>({"SADD", key, smember});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error adding " + smember + " to set "
+			     + key + ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+template <typename T>
+bool Redox::srem(const std::string &key, const T& member)
+{
+  std::string smember = stringify(member);
+  Command<int> &c = commandSync<int>({"SREM", key, smember});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error removing " + smember + " from set "
+			+ key + ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+template <typename T>
+bool Redox::sismember(const std::string &key, const T& member)
+{
+  std::string smember = stringify(member);
+  Command<int> &c = commandSync<int>({"SISMEMBER", key, smember});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("[FATAL] Error checking " + smember + " in set "
+			+ key + ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+//------------------------------------------------------------------------------
+// Hash related templated methods implementation
+//------------------------------------------------------------------------------
+template <typename T>
+bool Redox::hset(const std::string& key, const std::string& field, const T& value)
+{
+  std::string svalue = stringify(value);
+  Command<int>& c = commandSync<int>({"HSET", key, field, svalue});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("FATAL] Error hset key: " + key + " field: "
+			     + field + ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+template <typename T>
+bool Redox::hsetnx(const std::string& key, const std::string& field, const T& value)
+{
+  std::string svalue = stringify(value);
+  Command<int>& c = commandSync<int>({"HSETNX", key, field, svalue});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("FATAL] Error hset key: " + key + " field: " +
+			     field + ": Status code " + std::to_string(c.status()));
+  }
+
+  int reply = c.reply();
+  c.free();
+  return (reply == 1);
+}
+
+template <typename T> long long int
+Redox::hincrby(const std::string& key, const std::string& field, const T& increment)
+{
+  std::string sincrement = stringify(increment);
+  Command<long long int>& c
+    = commandSync<long long int>({"HINCRBY", key, field, sincrement});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("FATAL] Error hincrby key: " + key + " field: " +
+			     field + " value: " + sincrement + ": Status code "
+			     + std::to_string(c.status()));
+  }
+
+  long long int reply = c.reply();
+  c.free();
+  return reply;
+}
+
+template <typename T> double
+Redox::hincrbyfloat(const std::string& key, const std::string& field, const T& increment)
+{
+  std::string sincrement = stringify(increment);
+  Command<std::string>& c
+    = commandSync<std::string>({"HINCRBYFLOAT", key, field, sincrement});
+
+  if (!c.ok())
+  {
+    throw std::runtime_error("FATAL] Error hincrbyfloat key: " + key + " field:"
+			     + field + ": Status code " + std::to_string(c.status()));
+  }
+
+  std::string reply = c.reply();
+  c.free();
+  return std::stod(reply);
 }
 
 } // End namespace redis
