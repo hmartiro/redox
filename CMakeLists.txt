@@ -33,6 +33,10 @@ find_package(Threads REQUIRED)
 find_package(hiredis REQUIRED)
 find_package(libev REQUIRED)
 
+set(REDOX_LIB_INCLUDES
+  ${HIREDIS_INCLUDE_DIRS}
+	${LIBEV_INCLUDE_DIRS})
+
 set(REDOX_LIB_DEPS
   ${HIREDIS_LIBRARIES}
   ${LIBEV_LIBRARIES}
@@ -63,6 +67,7 @@ set(INC_REDOX_WRAPPER ${INC_REDOX_DIR}/redox.hpp)
 set(SRC_REDOX_ALL ${SRC_REDOX_CORE} ${SRC_REDOX_UTILS})
 set(INC_REDOX_ALL ${INC_REDOX_CORE} ${INC_REDOX_UTILS} ${INC_REDOX_WRAPPER})
 
+include_directories(${REDOX_LIB_INCLUDES})
 include_directories(${INC_REDOX_DIR})
 include_directories(${INC_REDOX_DIR}/redox)
 
