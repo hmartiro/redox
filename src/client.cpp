@@ -460,6 +460,8 @@ void Redox::processQueuedCommands(struct ev_loop *loop, ev_async *async, int rev
     } else if (rdx->processQueuedCommand<nullptr_t>(id)) {
     } else if (rdx->processQueuedCommand<vector<string>>(id)) {
     } else if (rdx->processQueuedCommand<std::set<string>>(id)) {
+    } else if (rdx->processQueuedCommand<map<string,string>>(id)) {
+    } else if (rdx->processQueuedCommand<vector<map<string,string>>>(id)) {
     } else if (rdx->processQueuedCommand<unordered_set<string>>(id)) {
     } else
       throw runtime_error("Command pointer not found in any queue!");
@@ -484,6 +486,8 @@ void Redox::freeQueuedCommands(struct ev_loop *loop, ev_async *async, int revent
     } else if (rdx->freeQueuedCommand<nullptr_t>(id)) {
     } else if (rdx->freeQueuedCommand<vector<string>>(id)) {
     } else if (rdx->freeQueuedCommand<std::set<string>>(id)) {
+    } else if (rdx->freeQueuedCommand<map<string,string>>(id)) {
+    } else if (rdx->freeQueuedCommand<vector<map<string,string>>>(id)) {
     } else if (rdx->freeQueuedCommand<unordered_set<string>>(id)) {
     } else {
     }
@@ -511,10 +515,16 @@ template <class ReplyT> bool Redox::freeQueuedCommand(long id) {
 }
 
 long Redox::freeAllCommands() {
-  return freeAllCommandsOfType<redisReply *>() + freeAllCommandsOfType<string>() +
-         freeAllCommandsOfType<char *>() + freeAllCommandsOfType<int>() +
-         freeAllCommandsOfType<long long int>() + freeAllCommandsOfType<nullptr_t>() +
-         freeAllCommandsOfType<vector<string>>() + freeAllCommandsOfType<std::set<string>>() +
+  return freeAllCommandsOfType<redisReply *>() +
+         freeAllCommandsOfType<string>() +
+         freeAllCommandsOfType<char *>() +
+         freeAllCommandsOfType<int>() +
+         freeAllCommandsOfType<long long int>() +
+         freeAllCommandsOfType<nullptr_t>() +
+         freeAllCommandsOfType<vector<string>>() +
+         freeAllCommandsOfType<std::set<string>>() +
+         freeAllCommandsOfType<map<string,string>>() +
+         freeAllCommandsOfType<vector<map<string,string>>>() +
          freeAllCommandsOfType<unordered_set<string>>();
 }
 
@@ -579,12 +589,19 @@ template <> unordered_map<long, Command<vector<string>> *> &Redox::getCommandMap
   return commands_vector_string_;
 }
 
-template <> unordered_map<long, Command<set<string>> *> &Redox::getCommandMap<set<string>>() {
+template <> unordered_map<long, Command<map<string,string>> *> &Redox::getCommandMap<map<string,string>>() {
+  return commands_map_string_;
+}
+
+template <> unordered_map<long, Command<vector<map<string,string>>> *> &Redox::getCommandMap<vector<map<string,string>>>() {
+  return commands_vectormap_string_;
+}
+
+template <> unordered_map<long, Command<std::set<string>> *> &Redox::getCommandMap<std::set<string>>() {
   return commands_set_string_;
 }
 
-template <>
-unordered_map<long, Command<unordered_set<string>> *> &
+template <> unordered_map<long, Command<unordered_set<string>> *> &
 Redox::getCommandMap<unordered_set<string>>() {
   return commands_unordered_set_string_;
 }

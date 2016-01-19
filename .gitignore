@@ -33,6 +33,13 @@ build/
 # IntelliJ
 .idea/
 
+# Qt-Creator (assuming a project called "redox")
+redox.config
+redox.creaor
+redox.files
+redox.includes
+redox.creator.user
+
 # Todo file
 TODO.md
 
