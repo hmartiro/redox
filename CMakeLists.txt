@@ -144,7 +144,7 @@ if (examples)
 
   add_executable(binary_data_publish examples/binary_data_publish.cpp)
   target_link_libraries(binary_data_publish redox)
-  
+
   add_executable(pub_sub examples/pub_sub.cpp)
   target_link_libraries(pub_sub redox)
 
@@ -204,7 +204,7 @@ set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 set(CPACK_PACKAGE_VERSION_MAJOR "${REDOX_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${REDOX_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${REDOX_VERSION_PATCH}")
-set(CPACK_PACKAGE_VERSION_RELEASE "1") # Increase this if a failed build was published
+set(CPACK_PACKAGE_VERSION_RELEASE "1.1") # Increase this if a failed build was published
 set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${CPACK_PACKAGE_VERSION_RELEASE}")
 set(CPACK_SYSTEM_NAME "${ARCHITECTURE}")
 set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}.${ARCHITECTURE}")
