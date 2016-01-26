@@ -393,7 +393,7 @@ private:
   template <class ReplyT> friend void Command<ReplyT>::free();
 
   // Access to call disconnectedCallback
-  template <class ReplyT> friend void Command<ReplyT>::processReply(redisReply *r);
+  template <class ReplyT> friend void Command<ReplyT>::processReply(redisReply *r, const std::string& errorMessage);
 };
 
 // ------------------------------------------------

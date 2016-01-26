@@ -365,17 +365,27 @@ template <class ReplyT> Command<ReplyT> *Redox::findCommand(long id) {
 template <class ReplyT>
 void Redox::commandCallback(redisAsyncContext *ctx, void *r, void *privdata) {
 
-  Redox *rdx = (Redox *)ctx->data;
-  long id = (long)privdata;
-  redisReply *reply_obj = (redisReply *)r;
-
-  Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
-  if (c == nullptr) {
-    freeReplyObject(reply_obj);
+  Redox *rdx = reinterpret_cast<Redox*>(ctx->data);
+  if (rdx == nullptr) {
     return;
   }
 
-  c->processReply(reply_obj);
+  redisReply *reply_obj = reinterpret_cast<redisReply*>(r);
+
+  long id = (long)privdata;
+  Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
+  if (c == nullptr) {
+    if (reply_obj != nullptr) {
+      freeReplyObject(reply_obj);
+    }
+    return;
+  }
+
+  if (ctx->err) {
+    c->processReply(nullptr, std::string(ctx->errstr));
+  } else {
+    c->processReply(reply_obj);
+  }
 }
 
 template <class ReplyT> bool Redox::submitToServer(Command<ReplyT> *c) {

@@ -75,14 +75,19 @@ template <class ReplyT> void Command<ReplyT>::wait() {
   waiting_done_ = {false};
 }
 
-template <class ReplyT> void Command<ReplyT>::processReply(redisReply *r) {
+template <class ReplyT> void Command<ReplyT>::processReply(redisReply *r, const std::string& errorMessage) {
 
   last_error_.clear();
   reply_obj_ = r;
 
   if (reply_obj_ == nullptr) {
     reply_status_ = ERROR_REPLY;
-    last_error_ = "Received null redisReply* from hiredis.";
+    if (errorMessage.empty()) {
+        last_error_ = "Received null redisReply* from hiredis.";
+    }
+    else {
+        last_error_ = errorMessage;
+    }
     logger_.error() << last_error_;
     Redox::disconnectedCallback(rdx_->ctx_, REDIS_ERR);
 
