@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
+#include <list>
 
 #include <gtest/gtest.h>
 
@@ -443,13 +444,13 @@ TEST_F(RedoxTest, HashSync) {
     ASSERT_TRUE(std::find(ivalues.begin(), ivalues.end(), std::stoi(*it)) != ivalues.end());
   }
 
-  ASSERT_THROW(rdx.hget(hash_key, "dummy_field"), std::runtime_error);
-  ASSERT_THROW(rdx.hget("unknown_key", "dummy_field"), std::runtime_error);
+  ASSERT_TRUE(rdx.hget(hash_key, "dummy_field").empty());
+  ASSERT_TRUE(rdx.hget("unknown_key", "dummy_field").empty());
   print_and_check_sync(rdx.commandSync<int>({"DEL", hash_key}), 1);
 
   // Test hscan command
   std::unordered_map<int, int> map;
-
+  std::unordered_map<int, int> ret_map;
   for (int i = 0; i < 3000; ++i)
   {
     map.emplace(i, i);
@@ -460,23 +461,97 @@ TEST_F(RedoxTest, HashSync) {
   long long count = 1000;
   std::pair< long long , std::unordered_map<std::string, std::string> > reply;
   reply = rdx.hscan(hash_key, cursor, count);
+  cursor = reply.first;
 
   for (auto&& elem: reply.second)
   {
     ASSERT_TRUE(map[std::stoi(elem.first)] == std::stoi(elem.second));
+    ret_map.emplace(std::stoi(elem.first), std::stoi(elem.second));
   }
 
   while (cursor)
   {
     reply = rdx.hscan(hash_key, cursor, count);
+    cursor = reply.first;
 
     for (auto&& elem: reply.second)
     {
       ASSERT_TRUE(map[std::stoi(elem.first)] == std::stoi(elem.second));
+      ret_map.emplace(std::stoi(elem.first), std::stoi(elem.second));
     }
   }
 
+  ASSERT_TRUE(map.size() == ret_map.size());
   print_and_check_sync(rdx.commandSync<int>({"DEL", hash_key}), 1);
+  rdx.disconnect();
+}
+
+// -------------------------------------------
+// Test HASH interface - asynchronous
+// -------------------------------------------
+TEST_F(RedoxTest, HashAsync) {
+  connect();
+  std::string hash_key = "redox_test:hash_async";
+  ASSERT_EQ(0, rdx.hlen(hash_key));
+  std::string field, value;
+  std::list<std::string> lst_errors;
+  std::atomic<std::uint64_t> num_async_req {0};
+  std::condition_variable wait_cv;
+  std::mutex mutex;
+  std::uint64_t num_elem = 100;
+
+  // Push asynchronously num_elem
+  for (std::uint64_t i = 0; i < num_elem; ++i)
+  {
+    num_async_req++;
+    field = "field" + std::to_string(i);
+    value = std::to_string(i);
+    auto callback = [&, field, value](Command<int>& c) {
+      if (!c.ok())
+	lst_errors.emplace(lst_errors.end(), field);
+
+      if (!--num_async_req)
+	wait_cv.notify_one();
+    };
+
+    rdx.hset(hash_key, field, value, callback);
+  }
+
+  {
+    // Wait for all the async requests
+    std::unique_lock<std::mutex> lock(mutex);
+    while (num_async_req)
+      wait_cv.wait(lock);
+  }
+
+  ASSERT_EQ(0, lst_errors.size());
+  ASSERT_EQ(num_elem, rdx.hlen(hash_key));
+
+  // Delete asynchronously all elements
+  for (std::uint64_t i = 0; i <= num_elem; ++i)
+  {
+    num_async_req++;
+    field = "field" + std::to_string(i);
+    auto callback = [&, field](Command<int>& c) {
+      if (!c.ok())
+	lst_errors.emplace(lst_errors.end(), field);
+
+      if (!--num_async_req)
+	wait_cv.notify_one();
+    };
+
+    rdx.hdel(hash_key, field, callback);
+  }
+
+  {
+    // Wait for all the async requests
+    std::unique_lock<std::mutex> lock(mutex);
+    while (num_async_req)
+      wait_cv.wait(lock);
+  }
+
+  ASSERT_EQ(0, lst_errors.size());
+  ASSERT_EQ(0, rdx.hlen(hash_key));
   rdx.disconnect();
 }
 
