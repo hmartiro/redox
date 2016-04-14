@@ -638,6 +638,12 @@ bool Redox::set(const string &key, const string &value) { return commandSync({"S
 
 bool Redox::del(const string &key) { return commandSync({"DEL", key}); }
 
+void Redox::del(const std::string &key,
+		const std::function<void(Command<int> &)> &callback)
+{
+  (void) command({"DEL", key}, callback);
+}
+
 bool Redox::exists(const string &key)
 {
   Command<int>& c = commandSync<int>({"EXISTS" , key});
@@ -792,6 +798,16 @@ Redox::hdel(const std::string& key, const std::string& field)
 }
 
 //------------------------------------------------------------------------------
+// Redis HASH del command wrapper - asynchronous
+//------------------------------------------------------------------------------
+void
+Redox::hdel(const std::string& key, const std::string& field,
+	    const std::function<void(Command<int> &)> &callback)
+{
+  (void) command({"HDEL", key, field}, callback);
+}
+
+//------------------------------------------------------------------------------
 // Redis HASH get command wrapper - synchronous
 //------------------------------------------------------------------------------
 std::string
@@ -800,10 +816,7 @@ Redox::hget(const std::string& key, const std::string& field)
   Command<std::string>& c = commandSync<std::string>({"HGET", key, field});
 
   if (!c.ok())
-  {
-    throw std::runtime_error("[FATAL] Error hget key: " + key + " field: " + field +
-			     ": Status code " + std::to_string(c.status()));
-  }
+    return std::string{};
 
   std::string reply = c.reply();
   c.free();
@@ -820,10 +833,7 @@ Redox::hgetall(const std::string& key)
     commandSync< std::vector<std::string> >({"HGETALL", key});
 
   if (!c.ok())
-  {
-    throw std::runtime_error("[FATAL] Error hgetall key: " + key + ": Status code "
-			     + std::to_string(c.status()));
-  }
+    return std::vector<std::string> {};
 
   std::vector<std::string> reply = c.reply();
   c.free();

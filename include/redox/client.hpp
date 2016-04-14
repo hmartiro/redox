@@ -213,6 +213,11 @@ public:
   bool del(const std::string &key);
 
   /**
+  * Redis DEL asynchronous command wrapper - delete the given key.
+  */
+  void del(const std::string &key, const std::function<void(Command<int> &)> &callback);
+
+  /**
   * Redis EXISTS command wrapper - synchronous
   *
   * @param key key looked up
@@ -365,6 +370,21 @@ public:
   bool hset(const std::string& key, const std::string& field, const T& value);
 
   /**
+   * Redis HASH set command wrapper - asynchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param value value to set
+   * @param callback called when reply arrives
+   *
+   * @return true if value set, otherwise false meaning the value existed and
+   *         it's updated
+   **/
+  template <typename T>
+  void hset(const std::string& key, const std::string& field, const T& value,
+	    const std::function<void(Command<int>&)> &callback);
+
+  /**
    * Redis HASH set if doesn't exist command wrapper - synchronous
    *
    * @param key name of the hash
@@ -382,12 +402,21 @@ public:
    *
    * @param key name of the hash
    * @param field hash field
-   * @param value value to set
    *
    * @return true if value set, otherwise false meaning the value existed and
    *         it's updated
    **/
   bool hdel(const std::string& key, const std::string& field);
+
+  /**
+   * Redis HASH del command wrapper - asynchronous
+   *
+   * @param key name of the hash
+   * @param field hash field
+   * @param callback called when reply arrives
+   **/
+  void hdel(const std::string& key, const std::string& field,
+	    const std::function<void(Command<int> &)> &callback);
 
   /**
    * Redis HASH get command wrapper - synchronous
@@ -396,7 +425,7 @@ public:
    * @param field hash field
    *
    * @return return the value associated with "field" in the hash stored at "key".
-   *         If no such value then throw ans std::runtime_error exception.
+   *         If no such key exists then it return an empty string
    **/
   std::string hget(const std::string& key, const std::string& field);
 
@@ -792,6 +821,14 @@ bool Redox::hset(const std::string& key, const std::string& field, const T& valu
   int reply = c.reply();
   c.free();
   return (reply == 1);
+}
+
+template <typename T>
+void Redox::hset(const std::string& key, const std::string& field, const T& value,
+		 const std::function<void(Command<int>&)>& callback)
+{
+  std::string svalue = stringify(value);
+  (void) command({"HSET", key, field, svalue}, callback);
 }
 
 template <typename T>
