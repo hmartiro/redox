@@ -364,17 +364,11 @@ TEST_F(RedoxTest, SetSync) {
   long long cursor = 0;
   long long count = 1000;
   std::pair< long long, std::vector<std::string> > reply;
-  reply = rdx.sscan(set_key, cursor, count);
 
-  for (auto&& elem: reply.second)
-  {
-    ASSERT_TRUE(std::find(members.begin(), members.end(), elem) !=
-		members.end());
-  }
-
-  while (cursor)
+  do
   {
     reply = rdx.sscan(set_key, cursor, count);
+    cursor = reply.first;
 
     for (auto&& elem: reply.second)
     {
@@ -382,8 +376,88 @@ TEST_F(RedoxTest, SetSync) {
 		  members.end());
     }
   }
+  while (cursor);
 
   print_and_check_sync(rdx.commandSync<int>({"DEL", set_key}), 1);
+  rdx.disconnect();
+}
+
+// -------------------------------------------
+// Test SET interface - asynchronous
+// -------------------------------------------
+TEST_F(RedoxTest, SetAsync) {
+  connect();
+  std::string set_key = "redox_test:set_async";
+  std::vector<std::string> members = {"200", "300", "400"};
+  std::list<std::string> lst_errors;
+  std::atomic<std::uint64_t> num_asyn_req {0};
+  std::mutex mutex;
+  std::condition_variable cond_var;
+  auto callback = [&](Command<int>& c) {
+    if ((c.ok() && c.reply() != 1) || !c.ok())
+    {
+      std::ostringstream oss;
+      oss << "Failed command: " << c.cmd() << " error: " << c.lastError();
+      lst_errors.emplace(lst_errors.end(), oss.str());
+    }
+
+    if (--num_asyn_req == 0)
+      cond_var.notify_one();
+  };
+
+  std::string value;
+  // Add some elements
+  for (auto i = 0; i < 100; ++i)
+  {
+    value = "val" + std::to_string(i);
+    num_asyn_req++;
+    rdx.sadd(set_key, value, callback);
+  }
+
+  // Wait for all the replies
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (num_asyn_req)
+      cond_var.wait(lock);
+  }
+
+  ASSERT_EQ(0, lst_errors.size());
+  // Add some more elements that will trigger some errors
+  for (auto i = 90; i < 110; ++i)
+  {
+    value = "val" + std::to_string(i);
+    num_asyn_req++;
+    rdx.sadd(set_key, value, callback);
+  }
+
+  // Wait for all the replies
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (num_asyn_req)
+      cond_var.wait(lock);
+  }
+
+  ASSERT_EQ(10, lst_errors.size());
+  ASSERT_EQ(110, rdx.scard(set_key));
+  lst_errors.clear();
+
+  // Remove all elements
+  for (auto i = 0; i < 110; ++i)
+  {
+    num_asyn_req++;
+    value = "val" + std::to_string(i);
+    rdx.srem(set_key, value, callback);
+  }
+
+  // Wait for all the replies
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (num_asyn_req)
+      cond_var.wait(lock);
+  }
+
+  ASSERT_EQ(0, lst_errors.size());
+  print_and_check_sync(rdx.commandSync<int>({"DEL", set_key}), 0);
   rdx.disconnect();
 }
 
@@ -499,6 +573,21 @@ TEST_F(RedoxTest, HashAsync) {
   std::condition_variable wait_cv;
   std::mutex mutex;
   std::uint64_t num_elem = 100;
+  auto callback_set = [&](Command<int>& c) {
+    if (!c.ok())
+    {
+      if (c.cmd_.size() >= 3)
+      {
+	std::string cmd_field = c.cmd_[2];
+	lst_errors.emplace(lst_errors.end(), cmd_field);
+      }
+    }
+
+    if (!--num_async_req)
+      wait_cv.notify_one();
+
+    c.free();
+  };
 
   // Push asynchronously num_elem
   for (std::uint64_t i = 0; i < num_elem; ++i)
@@ -506,15 +595,7 @@ TEST_F(RedoxTest, HashAsync) {
     num_async_req++;
     field = "field" + std::to_string(i);
     value = std::to_string(i);
-    auto callback = [&, field, value](Command<int>& c) {
-      if (!c.ok())
-	lst_errors.emplace(lst_errors.end(), field);
-
-      if (!--num_async_req)
-	wait_cv.notify_one();
-    };
-
-    rdx.hset(hash_key, field, value, callback);
+    rdx.hset(hash_key, field, value, callback_set);
   }
 
   {
@@ -525,22 +606,49 @@ TEST_F(RedoxTest, HashAsync) {
   }
 
   ASSERT_EQ(0, lst_errors.size());
-  ASSERT_EQ(num_elem, rdx.hlen(hash_key));
+
+  // Get map length asynchronously
+  long long int length = 0;
+  auto callback_len = [&](Command<long long int>& c) {
+    if (!c.ok())
+      length = -1;
+    else
+      length = c.reply();
+
+    c.free();
+    wait_cv.notify_one();
+  };
+
+  rdx.hlen(hash_key, callback_len);
+
+  {
+    // Wait for length async response
+    std::unique_lock<std::mutex> lock(mutex);
+    wait_cv.wait(lock);
+  }
+
+  ASSERT_EQ(num_elem, length);
 
   // Delete asynchronously all elements
+  auto callback_del = [&](Command<int>& c) {
+    if (!c.ok())
+    {
+      if (c.cmd_.size() >= 3)
+      {
+	std::string cmd_field = c.cmd_[2];
+	lst_errors.emplace(lst_errors.end(), cmd_field);
+      }
+    }
+
+    if (!--num_async_req)
+      wait_cv.notify_one();
+  };
+
   for (std::uint64_t i = 0; i <= num_elem; ++i)
   {
     num_async_req++;
     field = "field" + std::to_string(i);
-    auto callback = [&, field](Command<int>& c) {
-      if (!c.ok())
-	lst_errors.emplace(lst_errors.end(), field);
-
-      if (!--num_async_req)
-	wait_cv.notify_one();
-    };
-
-    rdx.hdel(hash_key, field, callback);
+    rdx.hdel(hash_key, field, callback_del);
   }
 
   {
