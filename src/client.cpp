@@ -641,7 +641,7 @@ bool Redox::del(const string &key) { return commandSync({"DEL", key}); }
 void Redox::del(const std::string &key,
 		const std::function<void(Command<int> &)> &callback)
 {
-  (void) command({"DEL", key}, callback);
+  (void) command<int>({"DEL", key}, callback);
 }
 
 bool Redox::exists(const string &key)
@@ -804,7 +804,7 @@ void
 Redox::hdel(const std::string& key, const std::string& field,
 	    const std::function<void(Command<int> &)> &callback)
 {
-  (void) command({"HDEL", key, field}, callback);
+  (void) command<int>({"HDEL", key, field}, callback);
 }
 
 //------------------------------------------------------------------------------
@@ -877,6 +877,16 @@ Redox::hlen(const std::string& key)
   long long int reply = c.reply();
   c.free();
   return reply;
+}
+
+//------------------------------------------------------------------------------
+// Redis HASH length command wrapper - asynchronous
+//------------------------------------------------------------------------------
+void
+Redox::hlen(const std::string& key,
+	    const std::function<void(Command<long long int> &)> &callback)
+{
+  (void) command<long long int>({"HLEN", key}, callback);
 }
 
 //------------------------------------------------------------------------------

@@ -277,6 +277,17 @@ public:
   bool sadd(const std::string &key, const T& member);
 
   /**
+   * Redis SET add command wrapper - asynchronous
+   *
+   * @param key name of the set
+   * @param member value to be added to the set
+   * @param callback called when reply arrives
+   **/
+  template <typename T>
+  void sadd(const std::string &key, const T& member,
+	    const std::function<void(Command<int>&)>& callback);
+
+  /**
    * Redis SET add command wrapper for multiple members - synchronous
    *
    * @param key name of the set
@@ -285,6 +296,7 @@ public:
    *
    * @return number of elements added to the set
    **/
+  // TODO: template the vector contents
   long long int sadd(const std::string &key,
 		     std::vector<std::string> vect_members);
 
@@ -300,6 +312,19 @@ public:
   bool srem(const std::string &key, const T& member);
 
   /**
+   * Redis SET remove command wrapper - asynchronous
+   *
+   * @param key name of the set
+   * @param member value to be removed from the set
+   * @param callback called when reply arrives
+   *
+   * @return true if member removed, otherwise false
+   **/
+  template<typename T>
+  void srem(const std::string &key, const T& member,
+	    const std::function<void(Command<int>&)>& callback);
+
+  /**
    * Redis SET remove command wrapper for multiple members - synchronous
    *
    * @param key name of the set
@@ -307,6 +332,7 @@ public:
    *
    * @return number of elements removed from the set
    **/
+  // TODO: template the vector contents
   long long int srem(const std::string &key,
 		     std::vector<std::string> vect_members);
 
@@ -457,6 +483,15 @@ public:
    * @return number of fields in the hash, or 0 if key does not exists
    **/
   long long int hlen(const std::string& key);
+
+  /**
+   * Redis HASH length command wrapper - synchronous
+   *
+   * @param key name of the hash
+   * @param callaback called when reply arrives
+   **/
+  void hlen(const std::string& key,
+	    const std::function<void(Command<long long int> &)> &callback);
 
   /**
    * Redis HASH increment_by command wrapper - synchronous
@@ -770,6 +805,14 @@ bool Redox::sadd(const std::string &key, const T& member)
 }
 
 template <typename T>
+void Redox::sadd(const std::string &key, const T& member,
+		 const std::function<void(Command<int>&)>& callback)
+{
+  std::string smember = stringify(member);
+  (void) command<int>({"SADD", key, smember}, callback);
+}
+
+template <typename T>
 bool Redox::srem(const std::string &key, const T& member)
 {
   std::string smember = stringify(member);
@@ -785,6 +828,15 @@ bool Redox::srem(const std::string &key, const T& member)
   c.free();
   return (reply == 1);
 }
+
+template<typename T>
+void Redox::srem(const std::string &key, const T& member,
+		 const std::function<void(Command<int>&)>& callback)
+{
+  std::string smember = stringify(member);
+  (void) command<int>({"SREM", key, smember}, callback);
+}
+
 
 template <typename T>
 bool Redox::sismember(const std::string &key, const T& member)
@@ -828,7 +880,7 @@ void Redox::hset(const std::string& key, const std::string& field, const T& valu
 		 const std::function<void(Command<int>&)>& callback)
 {
   std::string svalue = stringify(value);
-  (void) command({"HSET", key, field, svalue}, callback);
+  (void) command<int>({"HSET", key, field, svalue}, callback);
 }
 
 template <typename T>
