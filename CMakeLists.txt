@@ -52,15 +52,24 @@ set(INC_REDOX_DIR ${PROJECT_SOURCE_DIR}/include)
 set(SRC_REDOX_CORE
   ${SRC_REDOX_DIR}/client.cpp
   ${SRC_REDOX_DIR}/command.cpp
-  ${SRC_REDOX_DIR}/subscriber.cpp)
+  ${SRC_REDOX_DIR}/subscriber.cpp
+  ${SRC_REDOX_DIR}/redoxSet.cpp
+  ${SRC_REDOX_DIR}/redoxHash.cpp)
 
 set(INC_REDOX_CORE
     ${INC_REDOX_DIR}/redox/client.hpp
     ${INC_REDOX_DIR}/redox/subscriber.hpp
-    ${INC_REDOX_DIR}/redox/command.hpp)
+    ${INC_REDOX_DIR}/redox/command.hpp
+    ${INC_REDOX_DIR}/redox/redoxSet.hpp
+    ${INC_REDOX_DIR}/redox/redoxHash.hpp)
 
-set(SRC_REDOX_UTILS ${SRC_REDOX_DIR}/utils/logger.cpp)
-set(INC_REDOX_UTILS ${INC_REDOX_DIR}/redox/utils/logger.hpp)
+set(SRC_REDOX_UTILS
+    ${SRC_REDOX_DIR}/utils/conversion.cpp
+    ${SRC_REDOX_DIR}/utils/logger.cpp)
+
+set(INC_REDOX_UTILS
+    ${INC_REDOX_DIR}/redox/utils/conversion.hpp
+    ${INC_REDOX_DIR}/redox/utils/logger.hpp)
 
 set(INC_REDOX_WRAPPER ${INC_REDOX_DIR}/redox.hpp)
 
