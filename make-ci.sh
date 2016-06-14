@@ -24,6 +24,6 @@ cd ../..
 
 # Make redox
 cmake -Dexamples=ON -Dlib=ON -Dstatic_lib=ON -Dtests=ON ..
-time make
+time make VERBOSE=1
 ./test_redox
 cd ..
