@@ -26,5 +26,7 @@ sudo cp -r googletest/googletest/include/gtest /usr/local/include
 # Make redox
 cmake -Dexamples=ON -Dlib=ON -Dstatic_lib=ON -Dtests=ON ..
 time make VERBOSE=1
+ldd ./test_redox
+ls -al /usr/local/lib
 ./test_redox
 cd ..
