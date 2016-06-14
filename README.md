@@ -2,6 +2,8 @@ redox
 ======
 
 Modern, asynchronous, and wicked fast C++11 client for Redis
+[![Build Status](https://travis-ci.org/hmartiro/redox.svg?branch=feature%2Ftravis-ci)]
+(https://travis-ci.org/hmartiro/redox)
 
 Redox is a C++ interface to the
 [Redis](http://redis.io/) key-value store that makes it easy to write applications

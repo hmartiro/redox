@@ -108,7 +108,7 @@ if (tests)
   add_executable(test_redox test/test.cpp)
 
   target_include_directories(test_redox PUBLIC ${GTEST_INCLUDE_DIRS})
-  target_link_libraries(test_redox redox gtest)
+  target_link_libraries(test_redox redox ${GTEST_BOTH_LIBRARIES})
 
   # So that we can run 'make test'
   add_test(test_redox test_redox)
@@ -149,7 +149,7 @@ if (examples)
 
   add_executable(binary_data_publish examples/binary_data_publish.cpp)
   target_link_libraries(binary_data_publish redox)
-  
+
   add_executable(pub_sub examples/pub_sub.cpp)
   target_link_libraries(pub_sub redox)
 
