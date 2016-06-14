@@ -184,6 +184,9 @@ endif()
 # Install the dynamic library to /usr/lib[64]
 install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
 
+# Install the static library to /usr/lib[64]
+install(TARGETS redox_static DESTINATION lib${LIB_SUFFIX})
+
 # Install the headers into /usr/include/redox
 install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
 install(FILES ${INC_REDOX_UTILS} DESTINATION include/redox/utils)
