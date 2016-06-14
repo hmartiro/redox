@@ -181,11 +181,15 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT LIB_SUFFIX)
     set(LIB_SUFFIX "64")
 endif()
 
-# Install the dynamic library to /usr/lib[64]
-install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
+if (lib)
+  # Install the dynamic library to /usr/lib[64]
+  install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
+endif()
 
-# Install the static library to /usr/lib[64]
-install(TARGETS redox_static DESTINATION lib${LIB_SUFFIX})
+if (static_lib)
+  # Install the static library to /usr/lib[64]
+  install(TARGETS redox_static DESTINATION lib${LIB_SUFFIX})
+endif()
 
 # Install the headers into /usr/include/redox
 install(FILES ${INC_REDOX_CORE} DESTINATION include/redox)
