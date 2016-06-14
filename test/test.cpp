@@ -20,8 +20,9 @@
 
 #include <iostream>
 
+#include <gtest/gtest.h>
+
 #include "redox.hpp"
-#include "gtest/gtest.h"
 
 namespace {
 

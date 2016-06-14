@@ -19,8 +19,9 @@ mkdir build
 cd build
 cmake -DBUILD_GMOCK=OFF -DBUILD_GTEST=ON -DBUILD_SHARED_LIBS=ON ..
 time make
-sudo mv googletest/libg* /usr/local/lib/
 cd ../..
+sudo cp googletest/build/googletest/libg* /usr/local/lib/
+sudo cp -r googletest/googletest/include/gtest /usr/local/include
 
 # Make redox
 cmake -Dexamples=ON -Dlib=ON -Dstatic_lib=ON -Dtests=ON ..
