@@ -1,0 +1,20 @@
+# Enable C++ support
+language: cpp
+# OS
+sudo: false
+dist: trusty
+# Compiler selection
+compiler:
+  - clang
+  - gcc
+# Packages
+# addons:
+#   apt:
+#     packages:
+#     - libhiredis-dev
+#     - libev-dev
+# Build steps
+script:
+  - mkdir build
+  - cd build
+  - cmake .. && make
