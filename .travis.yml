@@ -1,11 +1,11 @@
 # Enable C++ support
 language: cpp
 # OS
-sudo: false
+sudo: required
 dist: trusty
 # Compiler selection
 compiler:
   - clang
   - gcc
 # Build steps
-script: make-ci.sh
+script: ./make-ci.sh
