@@ -38,7 +38,7 @@ using redox::RedoxSet;
 using redox::RedoxHash;
 
 static const std::string TEST_REDIS_HOST="localhost";
-static const int TEST_REDIS_PORT = 6382;
+static const int TEST_REDIS_PORT = 6379;
 
 
 // ------------------------------------------
