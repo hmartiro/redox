@@ -19,6 +19,15 @@ endif(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC -Wall")
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+  message("Found ccache ${CCACHE_FOUND}")
+  message("Using ccache to speed up compilation")
+  set(ENV{CCACHE_CPP2} "yes")
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+endif(CCACHE_FOUND)
+
 # Print out compiler commands
 # set(CMAKE_VERBOSE_MAKEFILE ON)
 
