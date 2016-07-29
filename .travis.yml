@@ -1,5 +1,6 @@
 # Enable C++ support
 language: cpp
+cache: ccache
 # OS
 sudo: required
 dist: trusty
