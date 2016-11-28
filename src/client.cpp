@@ -18,29 +18,26 @@
 * limitations under the License.
 */
 
-#include <signal.h>
-#include <algorithm>
 #include "client.hpp"
+#include <algorithm>
+#include <signal.h>
 
 using namespace std;
 
 namespace {
 
-template<typename tev, typename tcb>
-void redox_ev_async_init(tev ev, tcb cb)
-{
+template <typename tev, typename tcb> void redox_ev_async_init(tev ev, tcb cb) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-    ev_async_init(ev,cb);
+  ev_async_init(ev, cb);
 #pragma GCC diagnostic pop
 }
 
-template<typename ttimer, typename tcb, typename tafter, typename trepeat>
-void redox_ev_timer_init(ttimer timer, tcb cb, tafter after, trepeat repeat)
-{
+template <typename ttimer, typename tcb, typename tafter, typename trepeat>
+void redox_ev_timer_init(ttimer timer, tcb cb, tafter after, trepeat repeat) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-    ev_timer_init(timer,cb,after,repeat);
+  ev_timer_init(timer, cb, after, repeat);
 #pragma GCC diagnostic pop
 }
 
@@ -51,8 +48,7 @@ namespace redox {
 Redox::Redox(ostream &log_stream, log::Level log_level)
     : logger_(log_stream, log_level), evloop_(nullptr) {}
 
-bool Redox::connect(const string &host, const int port,
-                    function<void(int)> connection_callback) {
+bool Redox::connect(const string &host, const int port, function<void(int)> connection_callback) {
 
   host_ = host;
   port_ = port;
@@ -154,7 +150,7 @@ void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
   } else {
     rdx->logger_.info() << "Connected to Redis.";
     // Disable hiredis automatically freeing reply objects
-    ctx->c.reader->fn->freeObject = [](void *reply) {};
+    ctx->c.reader->fn->freeObject = [](void * /*reply*/) {};
     rdx->setConnectState(CONNECTED);
   }
 
@@ -234,7 +230,7 @@ void Redox::noWait(bool state) {
   nowait_ = state;
 }
 
-void breakEventLoop(struct ev_loop *loop, ev_async *async, int revents) {
+void breakEventLoop(struct ev_loop *loop, ev_async * /*async*/, int /*revents*/) {
   ev_break(loop, EVBREAK_ALL);
 }
 
@@ -340,8 +336,7 @@ void Redox::runEventLoop() {
   long created = commands_created_;
   long deleted = commands_deleted_;
   if (created != deleted) {
-    logger_.error() << "All commands were not freed! " << deleted << "/"
-                    << created;
+    logger_.error() << "All commands were not freed! " << deleted << "/" << created;
   }
 
   // Let go for block_until_stopped method
@@ -405,7 +400,7 @@ template <class ReplyT> bool Redox::submitToServer(Command<ReplyT> *c) {
 }
 
 template <class ReplyT>
-void Redox::submitCommandCallback(struct ev_loop *loop, ev_timer *timer, int revents) {
+void Redox::submitCommandCallback(struct ev_loop *loop, ev_timer *timer, int /*revents*/) {
 
   Redox *rdx = (Redox *)ev_userdata(loop);
   long id = (long)timer->data;
@@ -441,7 +436,7 @@ template <class ReplyT> bool Redox::processQueuedCommand(long id) {
   return true;
 }
 
-void Redox::processQueuedCommands(struct ev_loop *loop, ev_async *async, int revents) {
+void Redox::processQueuedCommands(struct ev_loop *loop, ev_async * /*async*/, int /*revents*/) {
 
   Redox *rdx = (Redox *)ev_userdata(loop);
 
@@ -466,7 +461,7 @@ void Redox::processQueuedCommands(struct ev_loop *loop, ev_async *async, int rev
   }
 }
 
-void Redox::freeQueuedCommands(struct ev_loop *loop, ev_async *async, int revents) {
+void Redox::freeQueuedCommands(struct ev_loop *loop, ev_async * /*async*/, int /*revents*/) {
 
   Redox *rdx = (Redox *)ev_userdata(loop);
 
