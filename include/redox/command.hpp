@@ -20,11 +20,11 @@
 
 #pragma once
 
-#include <string>
-#include <functional>
 #include <atomic>
-#include <mutex>
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <string>
 
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
