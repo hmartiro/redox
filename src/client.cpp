@@ -312,8 +312,8 @@ void Redox::runEventLoop() {
   // Run once more to disconnect
   ev_run(evloop_, EVRUN_NOWAIT);
 
-  long created = commands_created_;
-  long deleted = commands_deleted_;
+  // long created = commands_created_;
+  // long deleted = commands_deleted_;
 
   // Let go for block_until_stopped method
   setExited(true);
