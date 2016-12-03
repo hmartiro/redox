@@ -45,8 +45,7 @@ void redox_ev_timer_init(ttimer timer, tcb cb, tafter after, trepeat repeat) {
 
 namespace redox {
 
-Redox::Redox(ostream &log_stream, log::Level log_level)
-    : logger_(log_stream, log_level), evloop_(nullptr) {}
+Redox::Redox() : evloop_(nullptr) {}
 
 bool Redox::connect(const string &host, const int port, function<void(int)> connection_callback) {
 
@@ -116,7 +115,6 @@ void Redox::disconnect() {
 
 void Redox::stop() {
   to_exit_ = true;
-  logger_.debug() << "stop() called, breaking event loop";
   ev_async_send(evloop_, &watcher_stop_);
 }
 
@@ -143,12 +141,9 @@ void Redox::connectedCallback(const redisAsyncContext *ctx, int status) {
   Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
-    rdx->logger_.fatal() << "Could not connect to Redis: " << ctx->errstr;
-    rdx->logger_.fatal() << "Status: " << status;
     rdx->setConnectState(CONNECT_ERROR);
 
   } else {
-    rdx->logger_.info() << "Connected to Redis.";
     // Disable hiredis automatically freeing reply objects
     ctx->c.reader->fn->freeObject = [](void * /*reply*/) {};
     rdx->setConnectState(CONNECTED);
@@ -164,10 +159,8 @@ void Redox::disconnectedCallback(const redisAsyncContext *ctx, int status) {
   Redox *rdx = (Redox *)ctx->data;
 
   if (status != REDIS_OK) {
-    rdx->logger_.error() << "Disconnected from Redis on error: " << ctx->errstr;
     rdx->setConnectState(DISCONNECT_ERROR);
   } else {
-    rdx->logger_.info() << "Disconnected from Redis as planned.";
     rdx->setConnectState(DISCONNECTED);
   }
 
@@ -181,7 +174,6 @@ bool Redox::initEv() {
   signal(SIGPIPE, SIG_IGN);
   evloop_ = ev_loop_new(EVFLAG_AUTO);
   if (evloop_ == nullptr) {
-    logger_.fatal() << "Could not create a libev event loop.";
     setConnectState(INIT_ERROR);
     return false;
   }
@@ -194,27 +186,23 @@ bool Redox::initHiredis() {
   ctx_->data = (void *)this; // Back-reference
 
   if (ctx_->err) {
-    logger_.fatal() << "Could not create a hiredis context: " << ctx_->errstr;
     setConnectState(INIT_ERROR);
     return false;
   }
 
   // Attach event loop to hiredis
   if (redisLibevAttach(evloop_, ctx_) != REDIS_OK) {
-    logger_.fatal() << "Could not attach libev event loop to hiredis.";
     setConnectState(INIT_ERROR);
     return false;
   }
 
   // Set the callbacks to be invoked on server connection/disconnection
   if (redisAsyncSetConnectCallback(ctx_, Redox::connectedCallback) != REDIS_OK) {
-    logger_.fatal() << "Could not attach connect callback to hiredis.";
     setConnectState(INIT_ERROR);
     return false;
   }
 
   if (redisAsyncSetDisconnectCallback(ctx_, Redox::disconnectedCallback) != REDIS_OK) {
-    logger_.fatal() << "Could not attach disconnect callback to hiredis.";
     setConnectState(INIT_ERROR);
     return false;
   }
@@ -222,13 +210,7 @@ bool Redox::initHiredis() {
   return true;
 }
 
-void Redox::noWait(bool state) {
-  if (state)
-    logger_.info() << "No-wait mode enabled.";
-  else
-    logger_.info() << "No-wait mode disabled.";
-  nowait_ = state;
-}
+void Redox::noWait(bool state) { nowait_ = state; }
 
 void breakEventLoop(struct ev_loop *loop, ev_async * /*async*/, int /*revents*/) {
   ev_break(loop, EVBREAK_ALL);
@@ -284,7 +266,6 @@ void Redox::runEventLoop() {
 
     // Handle connection error
     if (connect_state_ != CONNECTED) {
-      logger_.warning() << "Did not connect, event loop exiting.";
       setExited(true);
       setRunning(false);
       return;
@@ -317,8 +298,6 @@ void Redox::runEventLoop() {
     }
   }
 
-  logger_.info() << "Stop signal detected. Closing down event loop.";
-
   // Signal event loop to free all commands
   freeAllCommands();
 
@@ -335,15 +314,10 @@ void Redox::runEventLoop() {
 
   long created = commands_created_;
   long deleted = commands_deleted_;
-  if (created != deleted) {
-    logger_.error() << "All commands were not freed! " << deleted << "/" << created;
-  }
 
   // Let go for block_until_stopped method
   setExited(true);
   setRunning(false);
-
-  logger_.info() << "Event thread exited.";
 }
 
 template <class ReplyT> Command<ReplyT> *Redox::findCommand(long id) {
@@ -390,7 +364,6 @@ template <class ReplyT> bool Redox::submitToServer(Command<ReplyT> *c) {
 
   if (redisAsyncCommandArgv(rdx->ctx_, commandCallback<ReplyT>, (void *)c->id_, argv.size(),
                             &argv[0], &argvlen[0]) != REDIS_OK) {
-    rdx->logger_.error() << "Could not send \"" << c->cmd() << "\": " << rdx->ctx_->errstr;
     c->reply_status_ = Command<ReplyT>::SEND_ERROR;
     c->invoke();
     return false;
@@ -407,8 +380,6 @@ void Redox::submitCommandCallback(struct ev_loop *loop, ev_timer *timer, int /*r
 
   Command<ReplyT> *c = rdx->findCommand<ReplyT>(id);
   if (c == nullptr) {
-    rdx->logger_.error() << "Couldn't find Command " << id
-                         << " in command_map (submitCommandCallback).";
     return;
   }
 

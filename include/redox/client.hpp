@@ -39,7 +39,7 @@
 #include <hiredis/hiredis.h>
 
 #include "command.hpp"
-#include "utils/logger.hpp"
+// #include "utils/logger.hpp"
 
 namespace redox {
 
@@ -69,7 +69,7 @@ public:
   /**
   * Constructor. Optionally specify a log stream and a log level.
   */
-  Redox(std::ostream &log_stream = std::cout, log::Level log_level = log::Warning);
+  Redox();
 
   /**
   * Disconnects from the Redis server, shuts down the event loop, and cleans up.
@@ -231,9 +231,6 @@ public:
 
   // Redox server over unix
   std::string path_;
-
-  // Logger
-  log::Logger logger_;
 
 private:
   // ------------------------------------------------
@@ -412,7 +409,7 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
   }
 
   auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd, callback, repeat, after,
-                                free_memory, logger_);
+                                free_memory);
 
   std::lock_guard<std::mutex> lg(queue_guard_);
   std::lock_guard<std::mutex> lg2(command_map_guard_);
