@@ -1,5 +1,10 @@
 redox
 ======
+```diff
+- ANNOUNCEMENT from hayk (@hmartiro): Unfortunately, I no longer have time to support
+- redox as I don't use it in my job. If there is an active user who wants to be a full
+- collaborator and take over improvements, please contact me!
+```
 
 Modern, asynchronous, and wicked fast C++11 client for Redis
 [![Build Status](https://travis-ci.org/hmartiro/redox.svg?branch=feature%2Ftravis-ci)]
