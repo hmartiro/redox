@@ -30,7 +30,7 @@ public:
   /**
   * Constructor. Same as Redox.
   */
-  Subscriber(std::ostream &log_stream = std::cout, log::Level log_level = log::Warning);
+  Subscriber();
 
   /**
   * Cleans up.
@@ -157,9 +157,6 @@ private:
 
   // Set of persisting commands, so that we can cancel them
   std::set<Command<redisReply *> *> commands_;
-
-  // Reference to rdx_.logger_ for convenience
-  log::Logger &logger_;
 
   // CVs to wait for unsubscriptions
   std::condition_variable cv_unsub_;

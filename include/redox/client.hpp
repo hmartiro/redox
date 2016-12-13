@@ -20,26 +20,26 @@
 
 #pragma once
 
-#include <iostream>
 #include <functional>
+#include <iostream>
 
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
-#include <string>
 #include <queue>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
-#include <hiredis/hiredis.h>
-#include <hiredis/async.h>
 #include <hiredis/adapters/libev.h>
+#include <hiredis/async.h>
+#include <hiredis/hiredis.h>
 
-#include "utils/logger.hpp"
 #include "command.hpp"
+// #include "utils/logger.hpp"
 
 namespace redox {
 
@@ -69,7 +69,7 @@ public:
   /**
   * Constructor. Optionally specify a log stream and a log level.
   */
-  Redox(std::ostream &log_stream = std::cout, log::Level log_level = log::Warning);
+  Redox();
 
   /**
   * Disconnects from the Redis server, shuts down the event loop, and cleans up.
@@ -232,9 +232,6 @@ public:
   // Redox server over unix
   std::string path_;
 
-  // Logger
-  log::Logger logger_;
-
 private:
   // ------------------------------------------------
   // Private methods
@@ -354,7 +351,7 @@ private:
 
   // Variable and CV to know when the event loop stops running
   std::atomic_bool to_exit_ = {false}; // Signal to exit
-  bool exited_ = false;  // Event thread exited
+  bool exited_ = false;                // Event thread exited
   std::mutex exit_lock_;
   std::condition_variable exit_waiter_;
 
@@ -385,12 +382,15 @@ private:
   std::queue<long> commands_to_free_;
   std::mutex free_queue_guard_;
 
-  // Commands use this method to deregister themselves from Redox,
-  // give it access to private members
+// Commands use this method to deregister themselves from Redox,
+// give it access to private members
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunsupported-friend"
   template <class ReplyT> friend void Command<ReplyT>::free();
 
   // Access to call disconnectedCallback
   template <class ReplyT> friend void Command<ReplyT>::processReply(redisReply *r);
+#pragma GCC diagnostic pop
 };
 
 // ------------------------------------------------
@@ -408,8 +408,8 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
     }
   }
 
-  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd, 
-                                callback, repeat, after, free_memory, logger_);
+  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd, callback, repeat, after,
+                                free_memory);
 
   std::lock_guard<std::mutex> lg(queue_guard_);
   std::lock_guard<std::mutex> lg2(command_map_guard_);

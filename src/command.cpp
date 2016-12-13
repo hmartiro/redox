@@ -18,12 +18,14 @@
 * limitations under the License.
 */
 
-#include <vector>
+// #include <iostream>
 #include <set>
+#include <sstream>
 #include <unordered_set>
+#include <vector>
 
-#include "command.hpp"
 #include "client.hpp"
+#include "command.hpp"
 
 using namespace std;
 
@@ -32,9 +34,9 @@ namespace redox {
 template <class ReplyT>
 Command<ReplyT>::Command(Redox *rdx, long id, const vector<string> &cmd,
                          const function<void(Command<ReplyT> &)> &callback, double repeat,
-                         double after, bool free_memory, log::Logger &logger)
+                         double after, bool free_memory)
     : rdx_(rdx), id_(id), cmd_(cmd), repeat_(repeat), after_(after), free_memory_(free_memory),
-      callback_(callback), last_error_(), logger_(logger) {
+      callback_(callback), last_error_() {
   timer_guard_.lock();
 }
 
@@ -52,7 +54,6 @@ template <class ReplyT> void Command<ReplyT>::processReply(redisReply *r) {
   if (reply_obj_ == nullptr) {
     reply_status_ = ERROR_REPLY;
     last_error_ = "Received null redisReply* from hiredis.";
-    logger_.error() << last_error_;
     Redox::disconnectedCallback(rdx_->ctx_, REDIS_ERR);
 
   } else {
@@ -112,9 +113,6 @@ template <class ReplyT> void Command<ReplyT>::freeReply() {
 */
 template <class ReplyT> ReplyT Command<ReplyT>::reply() {
   lock_guard<mutex> lg(reply_guard_);
-  if (!ok()) {
-    logger_.warning() << cmd() << ": Accessing reply value while status != OK.";
-  }
   return reply_val_;
 }
 
@@ -134,7 +132,6 @@ template <class ReplyT> bool Command<ReplyT>::isExpectedReply(int type) {
   errorMessage << "Received reply of type " << reply_obj_->type << ", expected type " << type
                << ".";
   last_error_ = errorMessage.str();
-  logger_.error() << cmd() << ": " << last_error_;
   reply_status_ = WRONG_TYPE;
   return false;
 }
@@ -153,7 +150,6 @@ template <class ReplyT> bool Command<ReplyT>::isExpectedReply(int typeA, int typ
   errorMessage << "Received reply of type " << reply_obj_->type << ", expected type " << typeA
                << " or " << typeB << ".";
   last_error_ = errorMessage.str();
-  logger_.error() << cmd() << ": " << last_error_;
   reply_status_ = WRONG_TYPE;
   return false;
 }
@@ -165,7 +161,6 @@ template <class ReplyT> bool Command<ReplyT>::checkErrorReply() {
       last_error_ = reply_obj_->str;
     }
 
-    logger_.error() << cmd() << ": " << last_error_;
     reply_status_ = ERROR_REPLY;
     return true;
   }
@@ -175,7 +170,6 @@ template <class ReplyT> bool Command<ReplyT>::checkErrorReply() {
 template <class ReplyT> bool Command<ReplyT>::checkNilReply() {
 
   if (reply_obj_->type == REDIS_REPLY_NIL) {
-    logger_.warning() << cmd() << ": Nil reply.";
     reply_status_ = NIL_REPLY;
     return true;
   }

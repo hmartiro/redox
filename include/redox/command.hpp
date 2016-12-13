@@ -20,16 +20,16 @@
 
 #pragma once
 
-#include <string>
-#include <functional>
 #include <atomic>
-#include <mutex>
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <string>
 
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
 
-#include "utils/logger.hpp"
+// #include "utils/logger.hpp"
 
 namespace redox {
 
@@ -102,7 +102,7 @@ public:
 private:
   Command(Redox *rdx, long id, const std::vector<std::string> &cmd,
           const std::function<void(Command<ReplyT> &)> &callback, double repeat, double after,
-          bool free_memory, log::Logger &logger);
+          bool free_memory);
 
   // Handles a new reply from the server
   void processReply(redisReply *r);
@@ -153,9 +153,6 @@ private:
   std::condition_variable waiter_;
   std::mutex waiter_lock_;
   std::atomic_bool waiting_done_ = {false};
-
-  // Passed on from Redox class
-  log::Logger &logger_;
 
   // Explicitly delete copy constructor and assignment operator,
   // Command objects should never be copied because they hold

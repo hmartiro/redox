@@ -93,6 +93,13 @@ if (lib)
     PROPERTIES VERSION ${REDOX_VERSION_STRING}
     SOVERSION ${REDOX_VERSION_MAJOR})
 
+  target_include_directories(redox PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      PRIVATE src)
+
+    export(TARGETS redox FILE RedoxConfig.cmake)
+
 endif()
 
 if (static_lib)
@@ -103,6 +110,13 @@ if (static_lib)
   set_target_properties(redox_static
     PROPERTIES VERSION ${REDOX_VERSION_STRING}
     SOVERSION ${REDOX_VERSION_MAJOR})
+
+  target_include_directories(redox_static PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      PRIVATE src)
+
+    export(TARGETS redox_static FILE RedoxStaticConfig.cmake)
 
 endif()
 
