@@ -182,12 +182,15 @@ endif()
 # ---------------------------------------------------------
 
 if(NOT CMAKE_INSTALL_PREFIX)
-   set(CMAKE_INSTALL_PREFIX /usr/)
+   set(CMAKE_INSTALL_PREFIX /usr/local)
 endif(NOT CMAKE_INSTALL_PREFIX)
 
 # Check if it is a 64 bit system
 if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT DEFINED LIB_SUFFIX)
+  # MacOS generally does not have a lib64 dir
+  IF(UNIX AND NOT APPLE)
     set(LIB_SUFFIX "64")
+  endif()
 endif()
 
 if (lib)
