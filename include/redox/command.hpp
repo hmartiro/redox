@@ -26,6 +26,7 @@
 #include <mutex>
 #include <condition_variable>
 
+#undef EV_ERROR
 #include <hiredis/adapters/libev.h>
 #include <hiredis/async.h>
 
