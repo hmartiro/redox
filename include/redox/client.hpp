@@ -36,6 +36,8 @@
 
 #include <hiredis/hiredis.h>
 #include <hiredis/async.h>
+
+#undef EV_ERROR
 #include <hiredis/adapters/libev.h>
 
 #include "utils/logger.hpp"
