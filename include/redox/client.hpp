@@ -31,6 +31,7 @@
 #include <string>
 #include <queue>
 #include <set>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -372,6 +373,8 @@ private:
   std::unordered_map<long, Command<long long int> *> commands_long_long_int_;
   std::unordered_map<long, Command<std::nullptr_t> *> commands_null_;
   std::unordered_map<long, Command<std::vector<std::string>> *> commands_vector_string_;
+  std::unordered_map<long, Command<std::map<std::string,std::string>> *> commands_map_string_;
+  std::unordered_map<long, Command<std::vector<std::map<std::string,std::string>>> *> commands_vectormap_string_;
   std::unordered_map<long, Command<std::set<std::string>> *> commands_set_string_;
   std::unordered_map<long, Command<std::unordered_set<std::string>> *>
       commands_unordered_set_string_;
@@ -390,7 +393,7 @@ private:
   template <class ReplyT> friend void Command<ReplyT>::free();
 
   // Access to call disconnectedCallback
-  template <class ReplyT> friend void Command<ReplyT>::processReply(redisReply *r);
+  template <class ReplyT> friend void Command<ReplyT>::processReply(redisReply *r, const std::string& errorMessage);
 };
 
 // ------------------------------------------------
@@ -408,7 +411,7 @@ Command<ReplyT> &Redox::createCommand(const std::vector<std::string> &cmd,
     }
   }
 
-  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd, 
+  auto *c = new Command<ReplyT>(this, commands_created_.fetch_add(1), cmd,
                                 callback, repeat, after, free_memory, logger_);
 
   std::lock_guard<std::mutex> lg(queue_guard_);

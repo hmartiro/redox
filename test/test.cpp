@@ -123,6 +123,12 @@ protected:
     c.free();
   }
 
+  template <class ReplyT> void print_and_check_sync(Command<ReplyT> &c) {
+    ASSERT_TRUE(c.ok());
+    cout << "[SYNC] " << c.cmd() << ": " << c.reply() << endl;
+    c.free();
+  }
+
   template <class ReplyT> void print_and_check_sync(Command<ReplyT> &c, const ReplyT &value) {
     ASSERT_TRUE(c.ok());
     EXPECT_EQ(c.reply(), value);
@@ -133,10 +139,9 @@ protected:
   /**
   * Check the error
   */
-  template <class ReplyT> void print_and_check_error_sync(Command<ReplyT> &c, const ReplyT &value) {
+  template <class ReplyT> void print_and_check_error_sync(Command<ReplyT> &c) {
     EXPECT_FALSE(c.ok());
     EXPECT_FALSE(c.lastError().empty());
-    //      EXPECT_EQ(value, c.reply());
     cout << c.cmd() << ": " << c.lastError() << endl;
   }
 };
@@ -237,9 +242,64 @@ TEST_F(RedoxTest, IncrSync) {
 TEST_F(RedoxTest, GetSetSyncError) {
   connect();
   print_and_check_sync<string>(rdx.commandSync<string>({"SET", "redox_test:a", "apple"}), "OK");
-  print_and_check_error_sync<int>(rdx.commandSync<int>({"GET", "redox_test:a"}), 3);
+  print_and_check_error_sync<int>(rdx.commandSync<int>({"GET", "redox_test:a"}));
   rdx.disconnect();
 }
+
+// -------------------------------------------
+// Core unit tests - reply types
+// -------------------------------------------
+
+TEST_F(RedoxTest, MapString) {
+  connect();
+
+  print_and_check_sync(rdx.commandSync<int>({"HSET", "mapstring", "a", "apple"}));
+  print_and_check_sync(rdx.commandSync<int>({"HSET", "mapstring", "b", "beer"}));
+
+  auto& cmd = rdx.commandSync<map<string,string>>({"HGETALL", "mapstring"});
+  ASSERT_TRUE(cmd.ok());
+
+  auto resultMap = cmd.reply();
+  EXPECT_EQ(2, resultMap.size());
+  EXPECT_EQ("apple", resultMap["a"]);
+  EXPECT_EQ("beer", resultMap["b"]);
+
+  cmd.free();
+  rdx.disconnect();
+}
+
+TEST_F(RedoxTest, VectorMapString) {
+  connect();
+
+  // This does not return the full command info, because COMMAND returns reply objects that are 3 levels deep.
+  //  However, for testing purposes, this suffices.
+  auto& cmd = rdx.commandSync<vector<map<string,string>>>({"COMMAND"});
+  ASSERT_TRUE(cmd.ok());
+
+  auto resultVector = cmd.reply();
+  cout << "resultVector.size(): " << resultVector.size() << endl;
+
+  bool foundGetCommand = false; // test if we can at least find the get command as a key
+  EXPECT_FALSE(resultVector.empty());
+  for (const auto& resultMap : resultVector)
+  {
+      EXPECT_FALSE(resultMap.empty());
+      cout << "resultMap.size(): " << resultMap.size() << endl;
+
+      if (resultMap.find("get") != resultMap.end())
+      {
+          foundGetCommand = true;
+      }
+  }
+  EXPECT_TRUE(foundGetCommand);
+
+  cmd.free();
+  rdx.disconnect();
+}
+
+// -------------------------------------------
+// Multithreading tests
+// -------------------------------------------
 
 TEST_F(RedoxTest, MultithreadedCRUD) {
   connect();

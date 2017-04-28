@@ -105,7 +105,7 @@ private:
           bool free_memory, log::Logger &logger);
 
   // Handles a new reply from the server
-  void processReply(redisReply *r);
+  void processReply(redisReply *r, const std::string& errorMessage = std::string());
 
   // Invoke a user callback from the reply object. This method is specialized
   // for each ReplyT of Command.
