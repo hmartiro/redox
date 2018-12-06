@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/lib@LIB_SUFFIX@
+includedir=${prefix}/include
+
+Name: redox
+Description: Modern, asynchronous, and wicked fast C++11 client for Redis
+Version: @REDOX_VERSION_STRING@
+
+Libs: -L${libdir} -lredox -L@HIREDIS_LIBRARY_DIRECTORY@ -lhiredis -L@LIBEV_LIBRARY_DIRECTORY@ -lev @CMAKE_THREAD_LIBS_INIT@
+Cflags: -I${includedir} -I@HIREDIS_INCLUDE_DIRS@
