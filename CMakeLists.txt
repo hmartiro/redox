@@ -193,6 +193,9 @@ endif()
 if (lib)
   # Install the dynamic library to /usr/lib[64]
   install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
+  # Generate the redox.pc pkg-config file in /usr/lib[64]/pkgconfig
+  configure_file("${CMAKE_HOME_DIRECTORY}/cmake/redox.pc.in" "${PROJECT_BINARY_DIR}/redox.pc" @ONLY)
+  install(FILES "${PROJECT_BINARY_DIR}/redox.pc" DESTINATION lib${LIB_SUFFIX}/pkgconfig/)
 endif()
 
 if (static_lib)
