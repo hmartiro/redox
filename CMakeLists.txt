@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.4)
+cmake_minimum_required(VERSION 3.0.2)
 project(redox)
 
 set(REDOX_VERSION_MAJOR 0)
@@ -194,6 +194,8 @@ if (lib)
   # Install the dynamic library to /usr/lib[64]
   install(TARGETS redox DESTINATION lib${LIB_SUFFIX})
   # Generate the redox.pc pkg-config file in /usr/lib[64]/pkgconfig
+  get_filename_component(HIREDIS_LIBRARY_DIRECTORY ${HIREDIS_LIBRARIES} DIRECTORY)
+  get_filename_component(LIBEV_LIBRARY_DIRECTORY ${LIBEV_LIBRARIES} DIRECTORY)
   configure_file("${CMAKE_HOME_DIRECTORY}/cmake/redox.pc.in" "${PROJECT_BINARY_DIR}/redox.pc" @ONLY)
   install(FILES "${PROJECT_BINARY_DIR}/redox.pc" DESTINATION lib${LIB_SUFFIX}/pkgconfig/)
 endif()
