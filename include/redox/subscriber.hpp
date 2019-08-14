@@ -59,6 +59,14 @@ public:
   }
 
   /**
+  * Send auth message to server.
+  * Call this before any subscribe happens
+  */
+  bool auth(const std::string &password) {
+    return rdx_.commandSync({"AUTH", password});
+  }
+
+  /**
   * Same as .stop() on a Redox instance.
   */
   void stop();
