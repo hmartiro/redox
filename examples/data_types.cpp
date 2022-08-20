@@ -46,6 +46,18 @@ int main(int argc, char* argv[]) {
         for (const string& s : c.reply()) cout << s << " ";
         cout << endl;
       }
+    }
+  );
+
+  rdx.del("myset");
+  rdx.commandSync(rdx.strToVec("SADD myset 2 3 5 7 11 13 17 19"));
+  rdx.command<vector<int>>(rdx.strToVec("SMISMEMBER myset 1 2 3 4 5"),
+    [&rdx](Command<vector<int>>& c) {
+      if(c.ok()) {
+        cout << "Are {1, 2, 3, 4, 5} in the set, respectively: ";
+        for (int i : c.reply()) cout << i << " ";
+        cout << endl;
+      }
       rdx.stop();
     }
   );

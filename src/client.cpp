@@ -459,6 +459,7 @@ void Redox::processQueuedCommands(struct ev_loop *loop, ev_async *async, int rev
     } else if (rdx->processQueuedCommand<long long int>(id)) {
     } else if (rdx->processQueuedCommand<nullptr_t>(id)) {
     } else if (rdx->processQueuedCommand<vector<string>>(id)) {
+    } else if (rdx->processQueuedCommand<vector<int>>(id)) {
     } else if (rdx->processQueuedCommand<std::set<string>>(id)) {
     } else if (rdx->processQueuedCommand<unordered_set<string>>(id)) {
     } else
@@ -483,6 +484,7 @@ void Redox::freeQueuedCommands(struct ev_loop *loop, ev_async *async, int revent
     } else if (rdx->freeQueuedCommand<long long int>(id)) {
     } else if (rdx->freeQueuedCommand<nullptr_t>(id)) {
     } else if (rdx->freeQueuedCommand<vector<string>>(id)) {
+    } else if (rdx->freeQueuedCommand<vector<int>>(id)) {
     } else if (rdx->freeQueuedCommand<std::set<string>>(id)) {
     } else if (rdx->freeQueuedCommand<unordered_set<string>>(id)) {
     } else {
@@ -515,6 +517,7 @@ long Redox::freeAllCommands() {
          freeAllCommandsOfType<char *>() + freeAllCommandsOfType<int>() +
          freeAllCommandsOfType<long long int>() + freeAllCommandsOfType<nullptr_t>() +
          freeAllCommandsOfType<vector<string>>() + freeAllCommandsOfType<std::set<string>>() +
+         freeAllCommandsOfType<vector<int>>() +
          freeAllCommandsOfType<unordered_set<string>>();
 }
 
@@ -577,6 +580,10 @@ template <> unordered_map<long, Command<nullptr_t> *> &Redox::getCommandMap<null
 
 template <> unordered_map<long, Command<vector<string>> *> &Redox::getCommandMap<vector<string>>() {
   return commands_vector_string_;
+}
+
+template <> unordered_map<long, Command<vector<int>> *> &Redox::getCommandMap<vector<int>>() {
+  return commands_vector_int_;
 }
 
 template <> unordered_map<long, Command<set<string>> *> &Redox::getCommandMap<set<string>>() {

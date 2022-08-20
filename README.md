@@ -268,6 +268,7 @@ a `WRONG_TYPE` or `NIL_REPLY` status.
  * `<std::vector<std::string>>`: Arrays of Simple Strings or Bulk Strings (in received order)
  * `<std::set<std::string>>`: Arrays of Simple Strings or Bulk Strings (in sorted order)
  * `<std::unordered_set<std::string>>`: Arrays of Simple Strings or Bulk Strings (in no order)
+ * `<std::vector<int>>`: Arrays of integers (in received order)
 
 ## Installation
 Instructions provided are for Ubuntu, but all components are platform-independent.
