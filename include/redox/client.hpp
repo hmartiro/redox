@@ -372,6 +372,7 @@ private:
   std::unordered_map<long, Command<long long int> *> commands_long_long_int_;
   std::unordered_map<long, Command<std::nullptr_t> *> commands_null_;
   std::unordered_map<long, Command<std::vector<std::string>> *> commands_vector_string_;
+  std::unordered_map<long, Command<std::vector<int>> *> commands_vector_int_;
   std::unordered_map<long, Command<std::set<std::string>> *> commands_set_string_;
   std::unordered_map<long, Command<std::unordered_set<std::string>> *>
       commands_unordered_set_string_;

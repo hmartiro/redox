@@ -236,6 +236,17 @@ template <> void Command<vector<string>>::parseReplyObject() {
   }
 }
 
+template <> void Command<vector<int>>::parseReplyObject() {
+
+  if (!isExpectedReply(REDIS_REPLY_ARRAY))
+    return;
+
+  for (size_t i = 0; i < reply_obj_->elements; i++) {
+    redisReply *r = *(reply_obj_->element + i);
+    reply_val_.push_back(r->integer);
+  }
+}
+
 template <> void Command<unordered_set<string>>::parseReplyObject() {
 
   if (!isExpectedReply(REDIS_REPLY_ARRAY))
@@ -268,6 +279,7 @@ template class Command<int>;
 template class Command<long long int>;
 template class Command<nullptr_t>;
 template class Command<vector<string>>;
+template class Command<vector<int>>;
 template class Command<set<string>>;
 template class Command<unordered_set<string>>;
 
